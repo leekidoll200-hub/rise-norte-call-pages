@@ -469,6 +469,20 @@ pre.sms{border-radius:12px}
 /* 들어오는 화면 */
 .login .logo{font-size:24px!important}
 .login .card{padding:26px;border-radius:20px}
+/* 통화 기록 화면 (2026-11-19) */
+.ctiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}
+.ctile{border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0;background:var(--card)}
+.ctile .k{font-size:12.5px;font-weight:700;color:var(--muted)}
+.ctile b{font-size:26px;line-height:1.2;font-weight:800;letter-spacing:-.03em;color:var(--bluetx)}
+.cnoans{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--bluesoft);border-radius:14px;padding:14px 16px}
+.crow{border-bottom:1px solid var(--line);padding:10px 0}
+.crow:last-child{border-bottom:0}
+.cname{background:none;border:0;padding:0;font:inherit;color:var(--ink);text-align:left;cursor:pointer;min-width:0;line-height:1.7}
+.cname:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:6px}
+ol.ctl{list-style:none;margin:10px 0 2px;padding:0 0 0 14px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:8px;font-size:14px}
+@media (max-width:560px){.ctiles{grid-template-columns:repeat(2,minmax(0,1fr))}.ctile b{font-size:22px}}
+/* 홈 빠른 길이 다섯 개가 돼서 넓은 화면에서는 한 줄에 다섯 개 */
+@media (min-width:861px){.quick{grid-template-columns:repeat(5,minmax(0,1fr))}.quick .qa{padding:16px}}
 </style>
 </head>
 <body>
@@ -830,10 +844,9 @@ function todayCard(){
  const goal=ME.goal||30; const conn=td.filter(r=>r.connected).length, appt=td.filter(r=>r.result==='약속').length;
  return `<div class="card today"><div class="row" style="justify-content:space-between"><h2 style="margin:0">오늘</h2><span class="sub">연속 기록 ${streakDays(mine)}일</span></div>
  <div class="bar" role="img" aria-label="오늘 콜 ${td.length} / 목표 ${goal}"><i style="width:${Math.min(100,pct(td.length,goal))}%"></i></div>
- <div class="row" style="justify-content:space-between"><span><b>${td.length}</b> / ${goal}콜 · 연결 <b>${conn}</b> · 약속 <b>${appt}</b></span><span class="row"><label class="sub" for="goalIn">목표</label><input class="t sm" id="goalIn" type="number" min="1" max="200" value="${goal}" style="width:72px">${VIEW==='home'?'<button class="btn sm" id="hNoans">안 받음 · 부재 1건</button>':''}${VIEW!=='live'?'<button class="btn pri sm" data-go="live">통화하기</button>':''}</span></div></div>`;
+ <div class="row" style="justify-content:space-between"><span><b>${td.length}</b> / ${goal}콜 · 연결 <b>${conn}</b> · 약속 <b>${appt}</b></span><span class="row"><label class="sub" for="goalIn">목표</label><input class="t sm" id="goalIn" type="number" min="1" max="200" value="${goal}" style="width:72px">${VIEW!=='live'?'<button class="btn pri sm" data-go="live">통화하기</button>':''}</span></div></div>`;
 }
-function bindTodayCard(v){ const hn=$('#hNoans',v); if(hn) hn.addEventListener('click',()=>{ const c=liveCfg(); const r=logNoans(c.db||'퍼미션',c.seg||''); LAST_NOANS=r.id; toast('부재 1건 기록했어요'); render(); });
- const g=$('#goalIn',v); if(g) g.addEventListener('change',()=>{ const n=Math.max(1,Math.min(200,+g.value||30)); ME.goal=n; save(); toast('오늘 목표 '+n+'콜'); }); $$('[data-go]',v).forEach(b=>{ if(!b._b){ b._b=1; b.addEventListener('click',()=>{VIEW=b.dataset.go; render();}); } }); }
+function bindTodayCard(v){ const g=$('#goalIn',v); if(g) g.addEventListener('change',()=>{ const n=Math.max(1,Math.min(200,+g.value||30)); ME.goal=n; save(); toast('오늘 목표 '+n+'콜'); }); $$('[data-go]',v).forEach(b=>{ if(!b._b){ b._b=1; b.addEventListener('click',()=>{VIEW=b.dataset.go; render();}); } }); }
 
 /* ---------- 내 통계 ---------- */
 let DATA_SCOPE='me', DATA_DB='퍼미션';
@@ -1072,22 +1085,22 @@ function homeView(v){
  <div class="quick">
   <button class="qa" data-go="live"><b>통화하기</b><span>대사 보면서 통화 · 끝나면 10초 기록</span></button>
   <button class="qa" data-go="calls"><b>통화 피드백</b><span>스크립트 붙여 넣기 · AI 피드백</span></button>
+  <button class="qa" data-go="records"><b>통화 기록</b><span>부재 남기기 · 오늘 몇 통 걸었나</span></button>
   <button class="qa" data-go="data"><b>내 통계</b><span>어디서 끊기는지 · 먹히는 질문</span></button>
   <button class="qa" data-go="kakao"><b>카톡·장표</b><span>통화한 고객 맞춤 카톡 · 장표 이미지</span></button>
  </div>
- ${noansCard()}
  ${remindCard()}
  <div class="card" style="margin-top:14px"><h2>이번 주</h2>${wkRows.length?`<p class="wk"><b>${wkRows.length}</b>통 걸고 <b>${con.length}</b>통 연결 · 약속 <b>${appt.length}</b>건${topDrop?`<br><span class="sub">가장 많이 끊긴 곳</span> <b>${esc(topDrop[0])}</b>`:''}</p>${wkRows.length<MIN_N?`<p class="sub" style="margin-top:6px">${MIN_N}건이 안 돼서 아직은 경향만 봐요.</p>`:''}`:'<p class="empty">이번 주 기록이 아직 없어요. 통화하기에서 기록하면 여기에 쌓여요.</p>'}</div>
  <div class="card" style="margin-top:14px"><h2>연습 <span class="sub">선택</span></h2><p class="sub">${aiOn()?'AI 고객':'연습 고객'}과 채팅으로 통화를 연습해요. 지금 단계: <b>${esc(st.current)}</b></p><div class="row" style="margin-top:8px"><button class="btn" data-go="practice">연습하러 가기</button></div></div>`;
  $$('[data-go]',v).forEach(b=>b.addEventListener('click',()=>{ VIEW=b.dataset.go; render(); }));
- bindTodayCard(v); bindRemind(v); bindNoans(v); noansNote(v); const hh=$('#hHelp',v); if(hh) hh.addEventListener('click',helpModal);
+ bindTodayCard(v); bindRemind(v); const hh=$('#hHelp',v); if(hh) hh.addEventListener('click',helpModal);
 }
 
 function helpModal_v5(){
  openModal(`<h2>이렇게 써요</h2><ol class="help">
  <li><b>통화하기</b> · 통화 전에 DB·나이대·질문 3개·약속 시간을 고르고 "받았어요 · 대본 보기"를 누르면, 인사부터 클로징까지 대본이 한 화면에 쭉 떠요. 고객이 뭐라고 하면 그 말 아래 대답을 읽으면 돼요. 끊으면 결과·고객·다음 연락을 10초 안에 기록하고, 안 받으면 "안 받음 · 부재 1건"만 눌러요. 끊은 뒤 "저장하고 카톡·장표 만들기"를 누르면 그 고객에게 보낼 카톡·장표로 바로 넘어가요.</li>
  <li><b>통화 피드백</b> · 녹음 스크립트를 붙여 넣는 곳이에요. 자동 점검 → AI 피드백 → 결과 고르기 → 저장 순서로 써요. 보낼 카톡·장표는 "이 고객 카톡·장표 만들기"로 만들어요. 다른 AI(ChatGPT 등)를 쓰면 "다른 AI에 물어볼 질문 복사"를 눌러 붙여 넣으세요.</li>
- <li><b>고객 기록</b> · 고객 이름으로 지난 통화·피드백·다음 연락을 찾아요. 고객 이름은 나만 봐요.</li>
+ <li><b>통화 기록</b> · 안 받은 전화는 여기서 "부재 1건"을 눌러 남겨요. 오늘·이번 주·이번 달에 몇 통 걸고 몇 통 연결됐는지 보고, 고객별로 지난 통화와 다시 걸 차례를 챙겨요. 고객 이름은 나만 봐요.</li>
  <li><b>내 통계</b> · 어디까지 갔다가 끊기는지, 어떤 질문이 먹히는지 봐요. 약속 뒤에는 실제로 만났는지 넣고, 주 1회 "기록 보내기"로 모으는 분께 보내요.</li>
  <li><b>멘트</b> · 통화 순서, 고객 반응별 대답, 질문 모음, 하면 안 되는 말을 찾아봐요. 「내 대본」에서 내 말투로 고치면 통화하기 대본에 바로 들어가고, 고친 버전마다 약속률이 따로 쌓여요. 통화 피드백의 AI 문장도 "내 대본에 넣기"로 넣을 수 있어요.</li>
  <li><b>카톡·장표</b> · 통화한 고객을 불러와 상황과 카톡 방식을 고르면, 보낼 카톡과 장표 이미지를 맞춤으로 만들어요. 상황별 카톡 5개씩, 주제별 후킹 문장, 장표 예시 16장도 있어요.</li>
@@ -1881,14 +1894,7 @@ function ktEvView(b){ const o=PBTAB, q=PB_Q; PBTAB='evidence'; PB_Q=''; const h=
 
 /* ---------- 다른 화면과 잇기 ---------- */
 function bindCallOut(){ bindCallOut_v1(); const k=$('#kMake'); if(k) k.addEventListener('click',()=>{ if(!kmFromDraft()){ toast('먼저 자동 점검을 해 주세요'); return; } KM.out=null; KTAB='make'; VIEW='kakao'; render(); window.scrollTo(0,0); }); const c=$('#aiCopy'); if(c) c.addEventListener('click',()=>{ const t=otherAIPrompt(); if(t) copy(t); }); }
-function recordsView(v){
- recordsView_v1(v);
- const mine=(DB.qlogs||[]).filter(r=>r.userId===ME.id&&!r.demo&&(r.cust||r.next)).slice().reverse();
- const box=document.createElement('div'); box.className='card'; box.style.marginTop='16px';
- const draw=()=>{ const q=String(REC_Q||'').trim(); const shown=q?mine.filter(r=>[r.cust,r.result,r.next,r.db].join(' ').includes(q)):mine;
-  box.innerHTML=`<h2>통화하기에서 남긴 기록 <span class="sub">${shown.length}건</span></h2>${shown.slice(0,80).map(r=>`<div class="recrow"><span style="min-width:0"><b>${esc(r.cust||'이름 안 적음')}</b> <span class="chip">${esc(r.db||'')}</span> <span class="chip ${r.result==='약속'?'ok':/거절|거부/.test(r.result)?'no':'hold'}">${esc(r.connected===false?'부재':r.result)}</span>${r.sent?' <span class="chip">카톡 보냄</span>':''}${r.next?`<br><span class="sub">다음: ${esc(r.next)}</span>`:''}</span><span class="recr"><span class="sub">${esc(fmt(r.at))}</span><button type="button" class="btn sm" data-kmq="${r.id}">카톡·장표</button></span></div>`).join('')||'<p class="empty">아직 없어요. 통화하기에서 기록할 때 고객 칸을 채우면 여기서 찾을 수 있어요.</p>'}`; };
- draw(); v.appendChild(box); const rq=$('#rq',v); if(rq) rq.addEventListener('input',()=>setTimeout(draw,0));
-}
+function recordsView(v){ recordsView_v1(v); callLog(v); }
 document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-kmq]'); if(b){ kmLoad('q:'+b.dataset.kmq); KM.out=null; KTAB='make'; VIEW='kakao'; render(); window.scrollTo(0,0); } });
 function liveSetupView_v8(v){ liveSetupView_v7(v); noansNote(v); }
 function noansNote(v){ const old=$('#noansNote',v); if(old) old.remove(); if(!LAST_NOANS) return; const r=(DB.qlogs||[]).find(x=>x.id===LAST_NOANS); if(!r) return;
@@ -2704,6 +2710,53 @@ async function srvPull(){
  if(added){ toast(`다른 기기에서 남긴 기록 ${added}건을 가져왔어요`); if(!LIVE&&!PRACTICE) render(); }
  return added;
 }
+/* ================= 통화 기록 화면 (2026-11-19) =================
+   홈에 있던 "안 받음 · 부재 1건"을 이리로 옮겼어요. 내 콜을 돌아보는 곳이에요: 몇 통 걸어 몇 통 연결됐나, 어디서 끊겼나, 통화 하나하나.
+   고객을 관리하는 화면이 아니에요. 고객 장부(누구에게 몇 차 콜, 다시 걸 차례, 계약)는 사업단 CRM(TS소셜링크)의 일이라 여기서는 만들지 않아요
+   (docs/PURPOSE.md 판단 기준 12). 여기는 통화 한 건이 한 줄이고, 그 통화에서 카톡·장표로 이어져요. 고객 이름은 여전히 이 기기에만 있어요. */
+const CLOG={per:'today',f:'all'};
+function clogIn(per){ const k=todayKey(); if(per==='today') return r=>String(r.at).slice(0,10)===k; if(per==='week'){ const wk=weekKey(); return r=>weekKey(String(r.at).slice(0,10))===wk; } const ym=k.slice(0,7); return r=>String(r.at).slice(0,7)===ym; }
+function clogKind(r){ if(r.connected===false) return 'noans'; if(r.result==='약속') return 'appt'; if(/거절|거부/.test(r.result||'')) return 'no'; return 'again'; }
+function clogHTML(){
+ const P=myLogs().filter(clogIn(CLOG.per)).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+ const con=P.filter(r=>r.connected), appt=P.filter(r=>r.result==='약속');
+ const cnt={all:P.length,noans:0,again:0,appt:0,no:0}; P.forEach(r=>{ cnt[clogKind(r)]++; });
+ /* 연결된 통화가 어디서 가장 많이 끊겼나 (약속 빼고) */
+ const drops={}; con.filter(r=>r.result!=='약속').forEach(r=>{ const k=STAGE_NAMES[r.stage]||'—'; drops[k]=(drops[k]||0)+1; }); const top=Object.entries(drops).sort((a,b)=>b[1]-a[1])[0];
+ const shown=P.filter(r=>CLOG.f==='all'||clogKind(r)===CLOG.f);
+ const db=(liveCfg().db)||'퍼미션';
+ const tile=(k,n,sub)=>`<div class="ctile"><span class="k">${k}</span><b>${n}</b>${sub?`<span class="sub">${sub}</span>`:''}</div>`;
+ const chip=r=>{ const k=clogKind(r); return k==='noans'?'<span class="chip hold">부재</span>':k==='appt'?'<span class="chip ok">약속</span>':k==='no'?`<span class="chip no">${esc(r.result)}</span>`:`<span class="chip">${esc(r.result||'기록')}</span>`; };
+ const row=r=>{ const c=r.connected!==false;
+  const what=c?`${esc(STAGE_NAMES[r.stage]||'')}까지${r.secs?` · ${Math.floor(r.secs/60)}분 ${r.secs%60}초`:''}${r.reason?` · 끊긴 이유: ${esc(r.reason)}`:''}`:`${r.tryN?r.tryN+'번째 전화 · ':''}안 받음`;
+  return `<div class="crow"><div class="row" style="justify-content:space-between;gap:8px"><span style="min-width:0;line-height:1.7"><span class="sub">${esc(fmt(r.at))}</span> <span class="chip">${esc(r.db||'')}</span> ${chip(r)}${r.sent?' <span class="chip">카톡 보냄</span>':''}${r.cust?` <b>${esc(r.cust)}</b>`:''}<br><span class="sub">${what}${r.next?` · 다음: ${esc(r.next)}`:''}</span></span><button type="button" class="btn sm" data-kmq="${r.id}">카톡·장표</button></div></div>`; };
+ const per=[['today','오늘'],['week','이번 주'],['month','이번 달']], fl=[['all','전체'],['noans','부재'],['again','다시 연락'],['appt','약속'],['no','거절']];
+ return `<div class="card" id="clog">
+  <div class="row" style="justify-content:space-between;gap:8px"><h2 style="margin:0">내 콜 숫자</h2><span class="row tabs2" style="gap:6px">${per.map(([k,n])=>`<button type="button" class="btn sm" data-cp="${k}" aria-pressed="${CLOG.per===k}">${n}</button>`).join('')}</span></div>
+  <div class="ctiles">${tile('건 콜',P.length)}${tile('부재',P.length-con.length)}${tile('연결',con.length,P.length?`연결률 ${pct(con.length,P.length)}%`:'')}${tile('약속',appt.length,con.length?`연결 중 ${pct(appt.length,con.length)}%`:'')}</div>
+  ${top?`<p class="sub" style="margin:0 0 12px">연결된 통화가 가장 많이 끊긴 곳은 <b style="color:var(--ink)">${esc(top[0])}</b>이에요 (${top[1]}건). 자세한 건 <button type="button" class="lnk" data-go2="data">내 통계</button>에서 봐요.</p>`:''}
+  <div class="cnoans"><span><b>방금 건 전화를 안 받았으면</b><br><span class="sub">한 번만 누르면 부재 1건이 남아요. 부재도 남겨야 연결률이 맞아요.</span></span><span class="row" style="gap:6px"><span class="row tabs2" style="gap:4px">${['퍼미션','방송'].map(x=>`<button type="button" class="btn sm" data-cdb="${x}" aria-pressed="${db===x}">${x}</button>`).join('')}</span><button type="button" class="btn pri" id="hNoans">안 받음 · 부재 1건</button></span></div>
+ </div>
+ <div class="card" id="clogList" style="margin-top:16px">
+  <h2 style="margin:0">통화 하나하나 <span class="sub">${per.find(x=>x[0]===CLOG.per)[1]} ${P.length}건</span></h2>
+  <div class="row tabs2" style="gap:6px;margin:12px 0 4px">${fl.map(([k,n])=>`<button type="button" class="btn sm" data-cf="${k}" aria-pressed="${CLOG.f===k}">${n} ${cnt[k]}</button>`).join('')}</div>
+  ${shown.slice(0,100).map(row).join('')||`<p class="empty">${P.length?'여기에 맞는 통화가 없어요.':'아직 없어요. 통화하기에서 기록하거나 위에서 부재를 남기면 여기에 쌓여요.'}</p>`}
+ </div>`;
+}
+function callLog(v){
+ const h=v.querySelector('h1'); if(h) h.textContent='통화 기록';
+ const lead=v.querySelector('.lead'); if(lead) lead.textContent='내 콜을 돌아보는 곳이에요. 몇 통 걸어 몇 통 연결됐는지, 어디서 끊겼는지 보고, 통화 하나하나에서 카톡·장표로 이어 가요. 고객 이름은 나만 봐요.';
+ const old=v.querySelector('#clogWrap'); if(old) old.remove();
+ const w=document.createElement('div'); w.id='clogWrap'; w.style.marginBottom='24px'; w.innerHTML=clogHTML()+`<h2 style="margin:24px 0 0">통화 피드백에서 저장한 기록</h2>`;
+ if(lead) lead.after(w); else v.prepend(w);
+ const redraw=()=>{ callLog(v); };
+ $$('[data-cp]',w).forEach(b=>b.addEventListener('click',()=>{ CLOG.per=b.dataset.cp; redraw(); }));
+ $$('[data-cf]',w).forEach(b=>b.addEventListener('click',()=>{ CLOG.f=b.dataset.cf; redraw(); }));
+ $$('[data-cdb]',w).forEach(b=>b.addEventListener('click',()=>{ setupInit(); LIVE_SETUP.db=b.dataset.cdb; saveCfg(); redraw(); }));
+ $$('[data-go2]',w).forEach(b=>b.addEventListener('click',()=>{ VIEW=b.dataset.go2; render(); window.scrollTo(0,0); }));
+ $('#hNoans',w).addEventListener('click',()=>{ const c=liveCfg(); const r=logNoans(c.db||'퍼미션',c.seg||''); LAST_NOANS=r.id; toast('부재 1건 기록했어요'); render(); });
+ noansNote(v);
+}
 function buildSeed(){
  const pb=JSON.parse(JSON.stringify(SEED_PART.playbook));
  pb.banRules=BAN_RULES; pb.cardRules=CARD_RULES; pb.evidence=EVIDENCE; pb.iq=IQ; pb.psy=PSY;
@@ -2942,7 +2995,7 @@ function analyzeCall(text,mySpk,names){
 }
 
 /* ================= 9. 화면 ================= */
-const TABS=[['home','홈'],['live','통화하기'],['calls','통화 피드백'],['records','고객 기록'],['data','내 통계'],['playbook','멘트'],['kakao','카톡·장표'],['practice','통화 연습'],['settings','설정']];
+const TABS=[['home','홈'],['live','통화하기'],['calls','통화 피드백'],['records','통화 기록'],['data','내 통계'],['playbook','멘트'],['kakao','카톡·장표'],['practice','통화 연습'],['settings','설정']];
 let VIEW='home', PRACTICE=null, PSTATE={level:'L1',mode:'chat'}, PBTAB='flow', CALLDRAFT=null, REC_ALL=false;
 function canAdmin(){ return ME && (ME.role==='admin'||ME.role==='manager'); }
 function isAdmin(){ return ME && ME.role==='admin'; }
