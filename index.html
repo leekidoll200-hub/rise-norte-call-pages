@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta name="robots" content="noindex,nofollow">
+<style>@font-face{font-family:"Pretendard";font-weight:400;font-style:normal;font-display:swap;src:url("fonts/Pretendard-Regular.woff2") format("woff2")}@font-face{font-family:"Pretendard";font-weight:500;font-style:normal;font-display:swap;src:url("fonts/Pretendard-Medium.woff2") format("woff2")}@font-face{font-family:"Pretendard";font-weight:600;font-style:normal;font-display:swap;src:url("fonts/Pretendard-SemiBold.woff2") format("woff2")}@font-face{font-family:"Pretendard";font-weight:700 900;font-style:normal;font-display:swap;src:url("fonts/Pretendard-Bold.woff2") format("woff2")}</style>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>콜 올인원</title>
@@ -393,6 +394,81 @@ ol.rules li{margin-bottom:8px;line-height:1.6}
 .mt{margin:0;font-size:15px;line-height:1.65}
 .cev{border-top:1px solid var(--line);padding:10px 0}
 .cev:first-of-type{border-top:0;padding-top:0}
+/* ===== 2026-11-19 디자인: TS자산관리센터 사이트의 틀을 따름 =====
+   따온 것은 틀뿐이에요: 밝은 하늘색 하나(#0396FF), 흰 바탕과 옅은 하늘색 면, 알약 모양 버튼, 둥근 카드, 굵고 촘촘한 제목, Pretendard 글꼴.
+   글·그림·코드는 가져오지 않았어요. 장표 이미지(남색·크림)는 그대로예요.
+   --blue는 면을 칠할 때, --bluetx는 흰 바탕 위 파란 글자에 써요(밝은 하늘색은 작은 글자로 쓰면 흐려 보여요). */
+:root{--bg:#f4f8ff;--card:#ffffff;--ink:#0a1628;--muted:#4a5a78;--line:#e6eef7;--line2:#cfdbea;--navy:#0a1628;--navy2:#16294a;
+ --blue:#0396ff;--bluetx:#0274d1;--bluesoft:#e9f5ff;--gold:#0396ff;--goldsoft:#e9f5ff;--focus:#0396ff;--onblue:#ffffff;--r:16px;
+ --grad:linear-gradient(135deg,#0396ff 0%,#22bdf2 100%);--shadow:0 6px 24px rgba(3,150,255,.07)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--blue:#2aa3ff;--bluetx:#6cc0ff;--gold:#2aa3ff;--focus:#6cc0ff;--onblue:#04111f;--grad:linear-gradient(135deg,#2aa3ff 0%,#4fd0f7 100%);--shadow:none}}
+:root[data-theme=dark]{--blue:#2aa3ff;--bluetx:#6cc0ff;--gold:#2aa3ff;--focus:#6cc0ff;--onblue:#04111f;--grad:linear-gradient(135deg,#2aa3ff 0%,#4fd0f7 100%);--shadow:none}
+
+body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;letter-spacing:-.01em}
+
+/* 머리와 메뉴 */
+.logo{font-size:17px;font-weight:800;letter-spacing:-.04em}
+.logo i{background:var(--grad);border-radius:8px;width:26px;height:26px;line-height:26px;font-size:13px;font-weight:800}
+.top .btn{border-radius:999px}
+.nav button{font-size:15px;font-weight:700;padding:13px 14px 11px;border-bottom-width:3px;letter-spacing:-.02em}
+.nav button[aria-current=page]{color:var(--bluetx);border-bottom-color:var(--blue)}
+
+/* 글 */
+h1{font-size:28px;line-height:1.3;font-weight:800;letter-spacing:-.045em;margin:0 0 10px}
+h2{font-size:17px;font-weight:800;letter-spacing:-.03em}
+h3{font-weight:700;letter-spacing:-.02em}
+@media (max-width:600px){h1{font-size:24px}}
+.lead{color:var(--muted);letter-spacing:-.015em}
+.lnk,.lbr .k,.lvs>h2 b{color:var(--bluetx)}
+
+/* 카드 · 버튼 · 입력 */
+.card{border-radius:var(--r);border:1px solid var(--line);box-shadow:var(--shadow)}
+.btn{border-radius:999px;font-weight:700;padding:0 18px;letter-spacing:-.02em}
+.btn:hover{border-color:var(--blue);color:var(--bluetx)}
+.btn.pri,.btn.gold{background:var(--blue);border-color:var(--blue);color:var(--onblue);box-shadow:0 6px 16px rgba(3,150,255,.26)}
+.btn.sm{border-radius:999px;padding:0 13px}
+.btn.sm.pri{box-shadow:0 3px 10px rgba(3,150,255,.22)}
+.btn.red{border-radius:999px}
+.chip{border-radius:999px;padding:3px 10px;font-weight:700;color:var(--bluetx)}
+.chip.hold{color:var(--bluetx)}
+input.t,select.t,textarea.t{border-radius:12px;border-color:var(--line2)}
+input.t.sm,select.t.sm{border-radius:10px}
+label.f{font-weight:700;letter-spacing:-.01em}
+.tabs2 button{border-radius:999px;font-weight:700}
+.tabs2 button[aria-pressed=true]{background:var(--blue);border-color:var(--blue);color:var(--onblue)}
+.note{border-radius:12px;background:var(--bluesoft)}
+.card.note{border-color:#cfe8ff;box-shadow:none}
+pre.sms{border-radius:12px}
+.sync{border-radius:999px;padding:3px 10px;font-weight:700}
+.sync[data-s="cloud"]{background:var(--bluesoft);color:var(--bluetx)}
+.toast{border-radius:999px;padding:11px 20px;font-weight:600}
+.modal .box{border-radius:20px}
+.ubtn{border-radius:14px}
+
+/* 홈 */
+.quick .qa{border-radius:var(--r);box-shadow:var(--shadow)}
+.quick .qa b{font-weight:800;letter-spacing:-.03em}
+.quick .qa:first-child{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 10px 26px rgba(3,150,255,.28)}
+.quick .qa:first-child span{color:rgba(255,255,255,.92)}
+.card.start{border:1px solid var(--line);border-left:4px solid var(--blue)}
+.today .bar{height:12px;background:var(--bluesoft)}
+.today .bar i,.funnel .fb i{background:var(--grad)}
+.today b,.wk b{color:var(--bluetx);font-weight:800}
+.wk b{font-size:20px;letter-spacing:-.03em}
+.kmake{border-radius:12px}
+
+/* 통화 대본 */
+.lvs{border-radius:var(--r);box-shadow:var(--shadow)}
+.lsay{border-left-color:var(--blue)}
+.lbr{border-radius:12px;background:var(--bg)}
+.lbr[aria-pressed=true]{border-color:var(--blue);background:var(--bluesoft)}
+.qbtn{border-radius:999px;font-weight:700;padding:4px 12px}
+.lvend{border-radius:12px}
+.ltimer{font-weight:800;letter-spacing:-.02em}
+
+/* 들어오는 화면 */
+.login .logo{font-size:24px!important}
+.login .card{padding:26px;border-radius:20px}
 </style>
 </head>
 <body>
