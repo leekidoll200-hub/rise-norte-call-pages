@@ -891,7 +891,7 @@ function bindLogin_v4(){
 /* ---------- 저장: 클로드 계정(db, 나만 보는 공간) + 이 기기 캐시 ---------- */
 const CLOUD={on:false,db:null,col:'',rev:0,timer:null,busy:false,state:'local',dev:(()=>{ try{ let d=localStorage.getItem('cai.dev'); if(!d){ d='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); localStorage.setItem('cai.dev',d);} return d; }catch(e){ return 'd'+Date.now().toString(36); } })()};
 const CHUNK=60000; // 한글 3바이트 기준으로도 문서 하나 256KiB 아래
-function cloudBadge(){ const b=document.getElementById('syncBadge'); if(!b) return; const t={cloud:'동기화',saving:'저장 중',init:'연결 중',local:'이 기기만'}[CLOUD.state]||''; b.textContent=t; b.dataset.s=CLOUD.state; b.title=CLOUD.state==='local'?'내 클로드에 올린 내 앱에서 열면 모든 기기에서 같은 기록을 봐요':'내 클로드 계정에 저장돼요'; }
+function cloudBadge(){ const b=document.getElementById('syncBadge'); if(!b) return; if(srvOn()){ srvBadge(); return; } const t={cloud:'동기화',saving:'저장 중',init:'연결 중',local:'이 기기만'}[CLOUD.state]||''; b.textContent=t; b.dataset.s=CLOUD.state; b.title=CLOUD.state==='local'?'내 클로드에 올린 내 앱에서 열면 모든 기기에서 같은 기록을 봐요':'내 클로드 계정에 저장돼요'; }
 async function cloudPull(){
  const snap=await CLOUD.db.collection(CLOUD.col).get(); const m={}; snap.docs.forEach(d=>{ m[d.id]=d.data(); });
  const meta=m.meta; if(!meta||!meta.n) return null; let s='';
@@ -1909,7 +1909,7 @@ function monthGate(ym){
   $('#mgCopy').addEventListener('click',()=>copy(mText(ym,m)));
  });
 }
-function render(){ render_v0(); if(ME&&!LIVE){ const ym=mDue(); if(ym) monthGate(ym); } }
+function render(){ if(srvBlocked()){ srvGate(); return; } render_v0(); if(ME&&!LIVE){ const ym=mDue(); if(ym) monthGate(ym); } srvAfterRender(); }
 
 /* ================= v0.9 · 내 대본(내 말투로 고치기) · 코칭 기록 · 버전별 약속률 ================= */
 const ML_V1='아, 고객님 이런 부분은 모르시면 안 돼요. 모르고 지나가면 [고객이 몰랐다고 한 것]. 그래서 이건 제가 확인 도와드릴게요.';
@@ -2420,6 +2420,120 @@ function bindNoans(v){
  $$('[data-na-got]',v).forEach(b=>b.addEventListener('click',()=>{ const r=rec(b.dataset.naGot); if(!r) return; setupInit(); LIVE_SETUP.db=r.db||'퍼미션'; LIVE_SETUP.seg=r.seg||''; LAST_NOANS=null; VIEW='live'; liveStart(); if(LIVE) LIVE.cust=r.cust||''; }));
  $$('[data-na-stop]',v).forEach(b=>b.addEventListener('click',()=>{ const r=rec(b.dataset.naStop); if(!r) return; const c=String(r.cust||'').trim(); myLogs().filter(x=>sameCust(x,c)&&x.connected===false).forEach(x=>{ x.done=true; }); save(); toast('목록에서 뺐어요'); render(); }));
 }
+/* ================= 서버 연결: 카카오 로그인 · 통화 기록 올리기 (2026-11-19) ================= */
+/* 주소로 접속하는 사이트에서만 켜져요. 파일로 열거나 클로드 아티팩트 안에서는 꺼져 있고 예전처럼 움직여요.
+   · 로그인: Supabase 인증의 카카오 로그인. 주인이 허락(profiles.allowed)한 사람만 화면에 들어가요.
+   · 올리기: 내 통화 기록(qlogs)을 records 표에 올려요. 고객 이름(cust)과 다음 연락 메모(next)는 올리지 않아요.
+   · 아래 key는 화면에 넣어 쓰라고 만든 공개 열쇠(publishable)예요. 비밀 열쇠(secret·service_role)는 절대 넣지 않아요.
+     누가 무엇을 볼 수 있는지는 서버의 규칙(supabase/migrations)이 정해요. */
+const SRV={url:'https://hdnpapqulgbdsthudeab.supabase.co',key:'sb_publishable_UPjTr9agsjz7nK_G8jIdMA_DFOhCVcn',
+ ses:null,uid:'',kname:'',prof:null,state:'boot',err:'',timer:null,busy:false,last:0};
+const SRV_LS='cai.srv', SRV_SENT='cai.srv.sent', SRV_OKKEY='cai.srv.ok';
+
+function srvOn(){ if(window.__SRV_FORCE!==undefined) return !!window.__SRV_FORCE; return /^https?:$/.test(location.protocol)&&!window.claude&&!/claude/i.test(location.hostname); }
+function srvLsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function srvLsSet(k,v){ try{ if(v===null) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){} }
+function srvStore(){ srvLsSet(SRV_LS,SRV.ses?JSON.stringify(SRV.ses):null); }
+
+/* 카카오에서 돌아오면 주소 뒤(#…)에 로그인 표가 붙어 와요. 받아서 저장하고 주소에서는 바로 지워요. */
+function srvTakeHash(){
+ const h=location.hash||''; if(!/access_token=|error_description=/.test(h)) return;
+ const p=new URLSearchParams(h.slice(1));
+ if(p.get('access_token')){ SRV.ses={at:p.get('access_token'),rt:p.get('refresh_token')||'',exp:+(p.get('expires_at')||0)||Math.floor(Date.now()/1000)+3000}; srvStore(); }
+ else SRV.err=p.get('error_description')||'';
+ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){ try{ location.hash=''; }catch(e2){} }
+}
+function srvLogin(){ location.href=SRV.url+'/auth/v1/authorize?provider=kakao&redirect_to='+encodeURIComponent(location.origin+location.pathname); }
+function srvLogout(){ SRV.ses=null; SRV.prof=null; SRV.uid=''; SRV.kname=''; srvStore(); srvLsSet(SRV_OKKEY,null); SRV.state='need'; }
+async function srvFetch(path,opt){
+ opt=opt||{}; const h=Object.assign({apikey:SRV.key,'Content-Type':'application/json'},opt.headers||{});
+ if(opt.auth!==false&&SRV.ses) h.Authorization='Bearer '+SRV.ses.at;
+ return fetch(SRV.url+path,{method:opt.method||'GET',headers:h,body:opt.body?JSON.stringify(opt.body):undefined});
+}
+/* 로그인 표는 한 시간짜리예요. 끝나기 전에 새로 받아요. */
+async function srvFresh(){
+ if(!SRV.ses) return false; if(SRV.ses.exp*1000-Date.now()>60000) return true; if(!SRV.ses.rt) return false;
+ const r=await srvFetch('/auth/v1/token?grant_type=refresh_token',{method:'POST',auth:false,body:{refresh_token:SRV.ses.rt}});
+ if(!r.ok){ if(r.status===400||r.status===401||r.status===403) srvLogout(); return false; }
+ const d=await r.json(); SRV.ses={at:d.access_token,rt:d.refresh_token||SRV.ses.rt,exp:d.expires_at||Math.floor(Date.now()/1000)+(d.expires_in||3600)}; srvStore(); return true;
+}
+async function srvInit(){
+ if(!srvOn()){ SRV.state='off'; return; }
+ try{ SRV.ses=JSON.parse(srvLsGet(SRV_LS)||'null'); }catch(e){ SRV.ses=null; }
+ srvTakeHash();
+ if(!SRV.ses){ SRV.state='need'; render(); return; }
+ SRV.state='init'; render();
+ try{
+  if(!(await srvFresh())){ if(SRV.ses) throw new Error('연결이 안 돼요'); SRV.state='need'; render(); return; }
+  const u=await srvFetch('/auth/v1/user'); if(u.status===401||u.status===403){ srvLogout(); render(); return; } if(!u.ok) throw new Error('HTTP '+u.status);
+  const ud=await u.json(); SRV.uid=ud.id; const md=ud.user_metadata||{}; SRV.kname=md.name||md.full_name||md.nickname||'';
+  const p=await srvFetch('/rest/v1/profiles?select=name,role,allowed&id=eq.'+encodeURIComponent(SRV.uid)); if(!p.ok) throw new Error('HTTP '+p.status);
+  const rows=await p.json(); SRV.prof=rows[0]||null;
+  if(SRV.prof&&SRV.prof.allowed){ SRV.state='ok'; SRV.err=''; srvLsSet(SRV_OKKEY,SRV.uid); } else { SRV.state='wait'; srvLsSet(SRV_OKKEY,null); }
+ }catch(e){
+  SRV.err=String((e&&e.message)||e);
+  /* 전에 허락받은 사람이면, 인터넷이 잠깐 끊겨도 통화는 계속할 수 있게 들여보내요. 기록은 연결되면 올라가요. */
+  const ok=srvLsGet(SRV_OKKEY); if(ok){ SRV.uid=SRV.uid||ok; SRV.state='offline'; } else SRV.state='err';
+ }
+ render(); if(SRV.state==='ok') srvQueue();
+}
+function srvBlocked(){ return srvOn()&&['boot','init','need','wait','err'].includes(SRV.state); }
+
+/* 들어오기 전 화면 */
+function srvGate(){
+ const app=$('#app'); const s=SRV.state; let body='';
+ if(s==='need') body=`<h2>카카오로 시작해요</h2><p class="sub" style="margin:0 0 14px">관리자가 허락한 분만 쓸 수 있어요. 통화 기록은 서버에 모이고, 고객 이름과 다음 연락 메모는 이 기기에만 남아요.</p>${SRV.err?`<p class="note" style="margin:0 0 12px">로그인이 끝나지 않았어요. 다시 눌러 주세요.</p>`:''}<button class="btn pri" id="srvGo" style="width:100%;min-height:48px">카카오로 시작하기</button>`;
+ else if(s==='wait') body=`<h2>${esc(SRV.kname||'로그인')}님, 로그인은 됐어요</h2><p class="sub" style="margin:0 0 14px">아직 허락 전이에요. 관리자에게 "콜 올인원 허락해 주세요"라고 알려 주세요. 허락을 받았으면 아래를 눌러요.</p><div class="row"><button class="btn pri" id="srvRetry">다시 확인</button><button class="btn" id="srvOut">다른 카카오 계정으로</button></div>`;
+ else if(s==='err') body=`<h2>서버에 연결이 안 돼요</h2><p class="sub" style="margin:0 0 14px">인터넷을 확인하고 다시 눌러 주세요.</p><div class="row"><button class="btn pri" id="srvRetry">다시 시도</button><button class="btn" id="srvOut">처음부터</button></div>`;
+ else body=`<h2>확인하고 있어요</h2><p class="sub" style="margin:0">잠깐이면 돼요.</p>`;
+ app.innerHTML=`<div class="login"><div class="logo" style="color:var(--ink);font-size:22px;margin-bottom:6px"><i aria-hidden="true">콜</i>콜 올인원</div>
+ <p class="lead">통화하면서 대사를 보고, 끝나면 10초 안에 기록하고, 내 콜이 어디서 끊기는지 보는 곳이에요.</p>
+ <div class="card" id="srvGate" data-s="${s}">${body}</div><p class="sub" style="margin-top:16px;text-align:center">${esc(typeof COPY_LINE==='string'?COPY_LINE:'')}</p></div>`;
+ const go=$('#srvGo'); if(go) go.addEventListener('click',srvLogin);
+ const re=$('#srvRetry'); if(re) re.addEventListener('click',()=>{ SRV.state='init'; render(); srvInit(); });
+ const out=$('#srvOut'); if(out) out.addEventListener('click',()=>{ srvLogout(); SRV.err=''; render(); });
+}
+/* 화면을 그린 뒤: 카카오 이름을 이름 칸에 미리 넣고, 오른쪽 위 배지를 맞춰요 */
+function srvAfterRender(){
+ if(!srvOn()) return;
+ if(!ME&&SRV.kname){ const n=$('#nuN'); if(n&&!n.value) n.value=SRV.kname; }
+ srvBadge();
+}
+function srvBadge(){
+ const b=document.getElementById('syncBadge'); if(!b||!srvOn()) return;
+ const off=SRV.state==='offline'; b.textContent=SRV.busy?'올리는 중':off?'연결 끊김':'서버에 저장'; b.dataset.s=SRV.busy?'saving':off?'local':'cloud';
+ b.title=off?'인터넷이 연결되면 기록이 서버로 올라가요. 그동안은 이 기기에 남아 있어요.':'통화 기록이 서버에 모여요. 고객 이름과 다음 연락 메모는 이 기기에만 남아요.';
+}
+
+/* 통화 기록 한 줄 → 서버 한 줄. 고객 이름(cust)과 다음 연락 메모(next)는 넣지 않아요. */
+function srvRow(r){
+ const data={}; ['qs','br','cl','sent','done','src','review'].forEach(k=>{ if(r[k]!==undefined) data[k]=r[k]; });
+ const d=new Date(r.at); const pk=typeof packOf==='function'?packOf(r.db):null;
+ return {id:r.id,user_id:SRV.uid,at:isNaN(d)?new Date().toISOString():d.toISOString(),db:r.db||'',lead:r.lead||(pk?pk.id:null),fv:r.fv||null,bv:r.bv||null,sv:r.sv==null?null:r.sv,
+  seg:r.seg||'',connected:!!r.connected,stage:r.stage||0,result:r.result||'',reason:r.reason||'',secs:r.secs||0,try_n:r.tryN||null,met:r.met||'',app:r.app||null,data};
+}
+function srvHash(s){ let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0; return String(h); }
+function srvSent(){ try{ return JSON.parse(srvLsGet(SRV_SENT)||'{}')||{}; }catch(e){ return {}; } }
+function srvQueue(){ if(!srvOn()||(SRV.state!=='ok'&&SRV.state!=='offline')) return; clearTimeout(SRV.timer); SRV.timer=setTimeout(srvPush,1500); }
+async function srvPush(){
+ if(SRV.busy||!ME||!SRV.uid||(typeof isEx==='function'&&isEx(ME))) return;
+ const sent=srvSent(); const todo=[];
+ (DB.qlogs||[]).forEach(r=>{ if(r.userId!==ME.id||r.demo||r.src==='import') return; const row=srvRow(r); const h=srvHash(JSON.stringify(row)); if(sent[SRV.uid+':'+r.id]!==h) todo.push([row,h]); });
+ if(!todo.length) return;
+ SRV.busy=true; srvBadge();
+ try{
+  if(!(await srvFresh())) throw new Error(SRV.ses?'연결이 안 돼요':'login');
+  for(let i=0;i<todo.length;i+=200){
+   const part=todo.slice(i,i+200); const now=new Date().toISOString();
+   const r=await srvFetch('/rest/v1/records?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:part.map(x=>Object.assign({updated_at:now},x[0]))});
+   if(!r.ok) throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,160));
+   part.forEach(x=>{ sent[SRV.uid+':'+x[0].id]=x[1]; }); srvLsSet(SRV_SENT,JSON.stringify(sent));
+  }
+  SRV.state='ok'; SRV.err=''; SRV.last=Date.now();
+ }catch(e){ SRV.err=String((e&&e.message)||e); if(SRV.err==='login'){ SRV.busy=false; render(); return; } SRV.state='offline'; }
+ SRV.busy=false; srvBadge();
+}
+window.addEventListener('online',()=>{ if(srvOn()&&(SRV.state==='offline'||SRV.state==='err')) srvInit(); });
 function buildSeed(){
  const pb=JSON.parse(JSON.stringify(SEED_PART.playbook));
  pb.banRules=BAN_RULES; pb.cardRules=CARD_RULES; pb.evidence=EVIDENCE; pb.iq=IQ; pb.psy=PSY;
@@ -2447,7 +2561,7 @@ function load(){
  try{const raw=localStorage.getItem(LS_KEY); if(raw){const d=JSON.parse(raw); if(d&&d.version===1) return mergeSeed(d);}}catch(e){}
  return buildSeed();
 }
-function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(DB));}catch(e){ if(!CLOUD.on) toast('이 브라우저에선 저장이 막혀 있어요. 창을 닫으면 사라져요.'); } if(CLOUD.on) cloudSchedule(); }
+function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(DB));}catch(e){ if(!CLOUD.on) toast('이 브라우저에선 저장이 막혀 있어요. 창을 닫으면 사라져요.'); } if(CLOUD.on) cloudSchedule(); srvQueue(); }
 function resetDB(){ DB=buildSeed(); save(); }
 function ss(k,v){ try{ if(v===undefined) return sessionStorage.getItem(k); if(v===null) sessionStorage.removeItem(k); else sessionStorage.setItem(k,v);}catch(e){ if(v===undefined) return MEM[k]||null; MEM[k]=v; } }
 
@@ -3090,6 +3204,7 @@ DB=load();
 render();
 cloudInit();
 sampleInit();
+srvInit();
 </script>
 </body>
 </html>
