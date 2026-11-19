@@ -1905,24 +1905,29 @@ function noansNote(v){ const old=$('#noansNote',v); if(old) old.remove(); if(!LA
 /* ================= v0.8.1 · 만든 사람 표시 · 이용 조건 동의 ================= */
 /* 콜 올인원 © 2026 이승준 (RISE NORTE). All rights reserved. 허락 없이 복제·수정·재배포·판매 금지. */
 const APP_OWNER='이승준 (RISE NORTE)';
-const TERMS_VER='2026-11-10';
+const TERMS_VER='2026-11-19';
 const TERMS=[
  '콜 올인원(앱 화면·기능, 대본, 카톡 문구, 장표 디자인)은 이승준(RISE NORTE)이 만든 저작물이에요.',
- '받은 분은 본인 영업에 자유롭게 쓸 수 있어요. 다만 허락 없이 복제·수정해서 다른 사람에게 주거나, 팔거나, 비슷한 서비스로 만들 수 없어요.',
- '"기록 보내기"로 보내 준 기록(고객 이름은 빠지고 번호는 가려져요)은 앱 개선과 익명 통계 분석에 써요. 개인을 알아볼 수 없게 묶은 통계(예: 단계별 약속률)는 앱 소개·제안 자료에 쓸 수 있어요.',
- '고객 개인정보는 각자 회사 규정에 맞게 다뤄 주세요. 앱에 주민번호·계좌 같은 정보는 넣지 않아요.'
+ '허락받은 분은 본인 영업에 자유롭게 쓸 수 있어요. 다만 허락 없이 복제·수정해서 다른 사람에게 주거나, 팔거나, 비슷한 서비스로 만들 수 없어요. 로그인한 계정을 다른 사람과 같이 쓰지 않아요.',
+ '사이트에서 쓰면 내 통화 기록이 서버에 모여요. 모이는 것은 통화한 때, DB 종류, 어디까지 갔는지, 결과와 끊긴 이유, 물은 질문과 고객 답(알았음·몰랐음), 통화 시간, 몇 번째 전화였는지, 쓴 대본 판이에요.',
+ '고객 이름과 다음 연락 메모는 서버로 보내지 않고 이 기기에만 남아요. 그래서 다른 기기에서는 그 두 칸이 비어 보여요. 앱에 고객 주민번호·계좌·주소는 넣지 않아요.',
+ '서버에 모인 내 기록은 나와 운영자(이승준)만 봐요. 팀장·단장 같은 관리자는 여러 건을 묶은 요약만 봐요.',
+ '카카오 로그인으로 받는 닉네임·이메일·프로필 사진은 본인 확인과 사용 허락 관리에만 써요.',
+ '모인 기록은 앱 개선, 교육, 통계 분석에 써요. 개인을 알아볼 수 없게 묶은 통계(예: 단계별 약속률)는 앱 소개·제안 자료에 쓸 수 있어요. 파일로 쓰는 분이 "기록 보내기"로 보내 준 기록도 같아요(고객 이름은 빠지고 번호는 가려져요).',
+ '그만 쓰고 싶으면 운영자에게 알려 주세요. 사용 허락을 거두고, 원하면 서버에 모인 내 기록을 지워 드려요.',
+ '고객 개인정보는 각자 회사 규정에 맞게 다뤄 주세요.'
 ];
 const COPY_LINE=`© 2026 ${APP_OWNER} · 허락 없이 복제·수정·재배포·판매할 수 없어요.`;
-let TERMS_OK=false;
+let TERMS_OK=false, TERMS_PRE=false;
 function termsModal(req){
- openModal(`<h2>콜 올인원 이용 조건</h2><p class="sub" style="margin:-6px 0 12px">${TERMS_VER} 기준</p><ol class="rules">${TERMS.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>
+ openModal(`<h2>콜 올인원 이용 조건</h2><p class="sub" style="margin:-6px 0 12px">${TERMS_VER} 기준${req?' · 쓰기 전에 한 번 읽고 동의해 주세요':''}</p><ol class="rules">${TERMS.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>
  <div class="row end" style="margin-top:12px">${req?'<button class="btn pri" id="tmOk">동의하고 계속</button>':'<button class="btn pri" data-close>닫기</button>'}</div>`);
- const ok=$('#tmOk'); if(ok) ok.addEventListener('click',()=>{ if(ME){ ME.terms=TERMS_VER; ME.termsAt=new Date().toISOString(); save(); } closeModal(); toast('동의했어요'); });
+ const ok=$('#tmOk'); if(ok) ok.addEventListener('click',()=>{ if(ME){ ME.terms=TERMS_VER; ME.termsAt=new Date().toISOString(); save(); } else { TERMS_PRE=true; const ag=$('#nuAg'); if(ag) ag.checked=true; } closeModal(); toast('동의했어요'); });
 }
 function termsCheck(){ if(ME&&!isEx(ME)&&ME.terms!==TERMS_VER&&$('#modal')&&$('#modal').hidden) termsModal(true); }
 function loginView(){
  return loginView_v4()
-  .replace('<button class="btn pri" id="nuGo"', `<label class="chk" style="margin:0 0 12px"><input type="checkbox" id="nuAg"><span><button type="button" class="lnk" id="nuTerms">이용 조건</button>에 동의해요</span></label><button class="btn pri" id="nuGo"`)
+  .replace('<button class="btn pri" id="nuGo"', `<label class="chk" style="margin:0 0 12px"><input type="checkbox" id="nuAg" ${TERMS_PRE?'checked':''}><span><button type="button" class="lnk" id="nuTerms">이용 조건</button>에 동의해요</span></label><button class="btn pri" id="nuGo"`)
   .replace(/<\/div><\/div>$/, `</div><p class="sub" style="margin-top:16px;text-align:center">${esc(COPY_LINE)}</p></div>`);
 }
 function bindLogin(){
@@ -2543,7 +2548,7 @@ async function srvInit(){
   if(!(await srvFresh())){ if(SRV.ses) throw new Error('연결이 안 돼요'); SRV.state='need'; render(); return; }
   const u=await srvFetch('/auth/v1/user'); if(u.status===401||u.status===403){ srvLogout(); render(); return; } if(!u.ok) throw new Error('HTTP '+u.status);
   const ud=await u.json(); SRV.uid=ud.id; const md=ud.user_metadata||{}; SRV.kname=md.name||md.full_name||md.nickname||'';
-  const p=await srvFetch('/rest/v1/profiles?select=name,role,allowed&id=eq.'+encodeURIComponent(SRV.uid)); if(!p.ok) throw new Error('HTTP '+p.status);
+  const p=await srvFetch('/rest/v1/profiles?select=name,team,role,allowed&id=eq.'+encodeURIComponent(SRV.uid)); if(!p.ok) throw new Error('HTTP '+p.status);
   const rows=await p.json(); SRV.prof=rows[0]||null;
   if(SRV.prof&&SRV.prof.allowed){ SRV.state='ok'; SRV.err=''; srvLsSet(SRV_OKKEY,SRV.uid); } else { SRV.state='wait'; srvLsSet(SRV_OKKEY,null); }
  }catch(e){
@@ -2573,8 +2578,14 @@ function srvGate(){
 function srvAfterRender(){
  if(!srvOn()) return;
  if(!ME&&SRV.kname){ const n=$('#nuN'); if(n&&!n.value) n.value=SRV.kname; }
- srvBadge();
+ /* 처음 들어오면 이용 조건을 팝업으로 바로 보여 줘요. 동의하면 아래 체크 칸이 채워져요. */
+ if(!ME&&$('#nuAg')&&!TERMS_PRE&&!SRV.termsShown&&$('#modal')&&$('#modal').hidden){ SRV.termsShown=true; termsModal(true); }
+ srvBadge(); srvProfileSync(); srvPeopleDraw();
+ if(srvIsOwner()&&ME&&(VIEW==='settings'||!SRV.people)&&!SRV.peopleBusy&&Date.now()-(SRV.peopleAt||0)>20000) srvPeopleLoad();
+ /* 들어온 뒤 처음 한 번, 그리고 탭으로 돌아올 때마다 서버 기록을 가져와요 */
+ if(SRV.state==='ok'&&ME&&!SRV.pulledAt&&!SRV.pulling) srvPull();
 }
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&srvOn()&&SRV.state==='ok'&&ME&&Date.now()-(SRV.pulledAt||0)>60000) srvPull(); });
 function srvBadge(){
  const b=document.getElementById('syncBadge'); if(!b||!srvOn()) return;
  const off=SRV.state==='offline'; b.textContent=SRV.busy?'올리는 중':off?'연결 끊김':'서버에 저장'; b.dataset.s=SRV.busy?'saving':off?'local':'cloud';
@@ -2610,6 +2621,89 @@ async function srvPush(){
  SRV.busy=false; srvBadge();
 }
 window.addEventListener('online',()=>{ if(srvOn()&&(SRV.state==='offline'||SRV.state==='err')) srvInit(); });
+
+/* ---------- 허락 화면 (주인만): 설정 탭 맨 위. 카카오로 들어온 사람을 허락하거나 허락을 거둬요 ---------- */
+const SRV_ROLES={agent:'설계사',manager:'관리자',owner:'주인'};
+function srvIsOwner(){ return srvOn()&&(SRV.state==='ok'||SRV.state==='offline')&&!!SRV.prof&&SRV.prof.role==='owner'; }
+async function srvPeopleLoad(){
+ if(!srvIsOwner()||SRV.peopleBusy) return; SRV.peopleBusy=true;
+ try{ if(await srvFresh()){ let r=await srvFetch('/rest/v1/profiles?select=id,name,nick,team,role,allowed,created_at&order=created_at.desc');
+  /* 서버에 nick 칸이 아직 없으면(0003 전) 그 칸 없이 다시 물어요 */
+  if(r.status===400) r=await srvFetch('/rest/v1/profiles?select=id,name,team,role,allowed,created_at&order=created_at.desc');
+  if(r.ok){ SRV.people=await r.json(); } } }catch(e){}
+ SRV.peopleAt=Date.now(); SRV.peopleBusy=false; srvPeopleDraw();
+}
+async function srvPersonSet(id,patch,msg){
+ try{ if(!(await srvFresh())) throw new Error('login');
+  const r=await srvFetch('/rest/v1/profiles?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:patch}); if(!r.ok) throw new Error('HTTP '+r.status);
+  const p=(SRV.people||[]).find(x=>x.id===id); if(p) Object.assign(p,patch); toast(msg);
+ }catch(e){ toast('바꾸지 못했어요. 다시 눌러 주세요.'); }
+ srvPeopleDraw();
+}
+function srvPeopleDraw(){
+ const v=$('#view'); ['srvPeople','srvPend'].forEach(id=>{ const o=document.getElementById(id); if(o) o.remove(); });
+ if(!v||!ME||!srvIsOwner()) return;
+ const L=SRV.people||[]; const pend=L.filter(p=>!p.allowed);
+ if(VIEW==='home'&&pend.length){
+  const d=document.createElement('div'); d.className='card note'; d.id='srvPend'; d.style.marginBottom='16px';
+  d.innerHTML=`<div class="row" style="justify-content:space-between;gap:8px"><span><b>허락을 기다리는 분이 ${pend.length}명 있어요.</b> <span class="sub">${esc(pend.slice(0,3).map(p=>p.name||p.nick||'이름 없음').join(', '))}${pend.length>3?' 외':''}</span></span><button type="button" class="btn sm pri" id="srvPendGo">허락하러 가기</button></div>`;
+  const first=v.querySelector('.card'); if(first) first.parentNode.insertBefore(d,first); else v.prepend(d);
+  $('#srvPendGo',d).addEventListener('click',()=>{ VIEW='settings'; render(); window.scrollTo(0,0); });
+ }
+ if(VIEW==='settings'){
+  const d=document.createElement('div'); d.className='card'; d.id='srvPeople'; d.style.marginBottom='16px';
+  const day=s=>String(s||'').slice(0,10);
+  const row=p=>{ const me=p.id===SRV.uid; const nm=p.name||p.nick||'이름 없음'; const extra=[p.nick&&p.nick!==p.name?'카카오 '+p.nick:'',p.team,day(p.created_at)+' 들어옴'].filter(Boolean).join(' · ');
+   const act=(me||p.role==='owner')?'':(p.allowed?`<select class="t sm" data-sp-role="${p.id}" aria-label="${esc(nm)} 역할"><option value="agent" ${p.role==='agent'?'selected':''}>설계사</option><option value="manager" ${p.role==='manager'?'selected':''}>관리자 (요약만 봄)</option></select><button type="button" class="btn sm" data-sp-deny="${p.id}">허락 거두기</button>`:`<button type="button" class="btn sm pri" data-sp-allow="${p.id}">허락하기</button>`);
+   return `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0;gap:8px"><span style="min-width:0"><b>${esc(nm)}</b> <span class="chip ${p.role==='owner'?'':p.allowed?'ok':'hold'}">${p.role==='owner'?'주인':p.allowed?'허락됨':'기다리는 중'}</span><br><span class="sub">${esc(extra)}</span></span><span class="row" style="gap:6px">${act}</span></div>`; };
+  d.innerHTML=`<h2>쓰는 사람 허락 <span class="sub">${L.length}명 · 기다리는 사람 ${pend.length}명</span></h2><p class="sub" style="margin:0 0 6px">카카오로 들어온 분이 여기에 떠요. 허락한 분만 화면에 들어오고 기록이 서버에 모여요.</p>${SRV.people?(pend.concat(L.filter(p=>p.allowed)).map(row).join('')||'<p class="empty">아직 들어온 분이 없어요.</p>'):'<p class="sub">불러오는 중…</p>'}<div class="row" style="margin-top:10px"><button type="button" class="btn sm" id="srvPeopleRe">새로 고침</button></div>`;
+  const h=v.querySelector('h1'); if(h) h.after(d); else v.prepend(d);
+  $$('[data-sp-allow]',d).forEach(b=>b.addEventListener('click',()=>srvPersonSet(b.dataset.spAllow,{allowed:true},'허락했어요. 그분이 "다시 확인"을 누르면 들어와요')));
+  $$('[data-sp-deny]',d).forEach(b=>b.addEventListener('click',()=>srvPersonSet(b.dataset.spDeny,{allowed:false},'허락을 거뒀어요')));
+  $$('[data-sp-role]',d).forEach(s=>s.addEventListener('change',()=>srvPersonSet(s.dataset.spRole,{role:s.value},'역할을 '+SRV_ROLES[s.value]+'(으)로 바꿨어요')));
+  $('#srvPeopleRe',d).addEventListener('click',srvPeopleLoad);
+ }
+}
+/* 앱에 적은 이름·소속을 서버 사람 표에 남겨요 (주인이 허락 화면에서 알아보게). 역할·허락은 이 길로 못 바꿔요. */
+async function srvProfileSync(){
+ if(!srvOn()||SRV.state!=='ok'||!ME||!SRV.prof||SRV.profBusy) return;
+ const name=String(ME.name||'').slice(0,40), team=[ME.company,ME.team].filter(Boolean).join(' ').slice(0,60);
+ if(SRV.prof.name===name&&(SRV.prof.team||'')===team) return; if(SRV.profTried===name+'|'+team) return;
+ SRV.profBusy=true; SRV.profTried=name+'|'+team;
+ try{ if(await srvFresh()){ const r=await srvFetch('/rest/v1/rpc/set_my_profile',{method:'POST',body:{p_name:name,p_team:team}}); if(r.ok){ SRV.prof.name=name; SRV.prof.team=team; } } }catch(e){}
+ SRV.profBusy=false;
+}
+
+/* ---------- 서버에서 내려받기: 다른 기기에서 올린 내 통화 기록을 이 기기로 가져와요 ----------
+   서버에는 고객 이름(cust)과 다음 연락 메모(next)가 없어요. 그래서 다른 기기에서 받은 기록은 그 두 칸이 비어 있어요.
+   이미 이 기기에 있는 기록은 건드리지 않아요(이 기기 것이 원본). 없는 것만 더해요. */
+function srvFromRow(x){
+ const d=new Date(x.at); const p=n=>String(n).padStart(2,'0');
+ const at=isNaN(d)?String(x.at||''):`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+ const r=Object.assign({},x.data||{},{id:x.id,userId:ME.id,at,db:x.db||'',seg:x.seg||'',connected:!!x.connected,stage:x.stage||0,result:x.result||'',reason:x.reason||'',secs:x.secs||0,next:'',met:x.met||''});
+ r.qs=Array.isArray(r.qs)?r.qs:[]; r.br=Array.isArray(r.br)?r.br:[]; r.src=r.src||'live';
+ if(x.app) r.app=x.app; if(x.sv!=null) r.sv=x.sv; if(x.lead) r.lead=x.lead; if(x.fv) r.fv=x.fv; if(x.bv) r.bv=x.bv; if(x.try_n) r.tryN=x.try_n;
+ delete r.cust; return r;
+}
+async function srvPull(){
+ if(!srvOn()||SRV.state!=='ok'||!ME||!SRV.uid||SRV.pulling||(typeof isEx==='function'&&isEx(ME))) return 0;
+ SRV.pulling=true; let added=0;
+ try{
+  if(!(await srvFresh())) throw new Error('login');
+  DB.qlogs=DB.qlogs||[]; const have=new Set(DB.qlogs.map(r=>r.id)); const sent=srvSent();
+  for(let off=0;off<20000;off+=1000){
+   const r=await srvFetch('/rest/v1/records?select=*&user_id=eq.'+encodeURIComponent(SRV.uid)+'&order=at.asc&limit=1000&offset='+off); if(!r.ok) throw new Error('HTTP '+r.status);
+   const rows=await r.json();
+   rows.forEach(x=>{ if(!x||!x.id||have.has(x.id)) return; const q=srvFromRow(x); DB.qlogs.push(q); have.add(q.id); sent[SRV.uid+':'+q.id]=srvHash(JSON.stringify(srvRow(q))); added++; });
+   if(rows.length<1000) break;
+  }
+  if(added){ DB.qlogs.sort((a,b)=>String(a.at).localeCompare(String(b.at))); srvLsSet(SRV_SENT,JSON.stringify(sent)); save(); }
+  SRV.pulledAt=Date.now();
+ }catch(e){ SRV.err=String((e&&e.message)||e); }
+ SRV.pulling=false;
+ if(added){ toast(`다른 기기에서 남긴 기록 ${added}건을 가져왔어요`); if(!LIVE&&!PRACTICE) render(); }
+ return added;
+}
 function buildSeed(){
  const pb=JSON.parse(JSON.stringify(SEED_PART.playbook));
  pb.banRules=BAN_RULES; pb.cardRules=CARD_RULES; pb.evidence=EVIDENCE; pb.iq=IQ; pb.psy=PSY;
