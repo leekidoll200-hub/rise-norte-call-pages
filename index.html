@@ -3275,6 +3275,8 @@ function toggleListen_v0(btn){
 if('speechSynthesis' in window){ try{ speechSynthesis.onvoiceschanged=()=>{ if(VIEW==='settings'&&ME) render(); }; }catch(e){} }
 
 /* ================= 시작 ================= */
+/* 기기가 어두운 화면 설정이어도 밝은 화면으로 보여요 (2026-11-19 디자인: 흰 바탕 · 하늘색). 어두운 화면용 색은 CSS에 남아 있어요. */
+document.documentElement.dataset.theme='light';
 DB=load();
 (function(){ const id=lsMe()||ss('cai.me')||DB.meId; if(id){ const u=userById(id); if(u&&!isEx(u)) ME=u; } })();
 render();
