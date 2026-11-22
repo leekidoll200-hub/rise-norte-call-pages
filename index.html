@@ -993,15 +993,19 @@ const CHUNK=60000; // 한글 3바이트 기준으로도 문서 하나 256KiB 아
 function cloudBadge(){ const b=document.getElementById('syncBadge'); if(!b) return; if(srvOn()){ srvBadge(); return; } const t={cloud:'동기화',saving:'저장 중',init:'연결 중',local:'이 기기만'}[CLOUD.state]||''; b.textContent=t; b.dataset.s=CLOUD.state; b.title=CLOUD.state==='local'?'내 클로드에 올린 내 앱에서 열면 모든 기기에서 같은 기록을 봐요':'내 클로드 계정에 저장돼요'; }
 async function cloudPull(){
  const snap=await CLOUD.db.collection(CLOUD.col).get(); const m={}; snap.docs.forEach(d=>{ m[d.id]=d.data(); });
- const meta=m.meta; if(!meta||!meta.n) return null; let s='';
+ const meta=m.meta; if(!meta||!meta.n) return null; let s=''; CLOUD.n0=Math.max(meta.n,Object.keys(m).filter(k=>/^cd+$/.test(k)).length);
  for(let i=0;i<meta.n;i++){ const c=m['c'+i]; if(!c||c.rev!==meta.rev) return {broken:true}; s+=c.s; }
  try{ return {rev:meta.rev,data:JSON.parse(s)}; }catch(e){ return {broken:true}; }
 }
+/* Claude 저장소(본인 칸)에 올리는 사본. 고객 이름(cust)·다음 연락 메모(next)·고객 이름표(customers)는 빼요. 이 기기에만 남아요. (2026-11-22) */
+function cloudCopy(d){ const o=Object.assign({},d); o.qlogs=(d.qlogs||[]).map(r=>{ if(!r||(r.cust===undefined&&r.next===undefined)) return r; const x=Object.assign({},r); delete x.cust; delete x.next; return x; }); o.customers={}; return o; }
 async function cloudPush(){
- const s=JSON.stringify(DB); const n=Math.max(1,Math.ceil(s.length/CHUNK)); const rev=Date.now();
+ const s=JSON.stringify(cloudCopy(DB)); const n=Math.max(1,Math.ceil(s.length/CHUNK)); const rev=Date.now();
  for(let i=0;i<n;i++) await CLOUD.db.doc(CLOUD.col+'/c'+i).set({rev,s:s.slice(i*CHUNK,(i+1)*CHUNK)});
- await CLOUD.db.doc(CLOUD.col+'/meta').set({rev,n,at:new Date().toISOString(),dev:CLOUD.dev,app:APP_VER});
+ await CLOUD.db.doc(CLOUD.col+'/meta').set({rev,n,at:new Date().toISOString(),dev:CLOUD.dev,app:APP_VER,noNames:1});
  CLOUD.rev=rev;
+ // 예전에 더 많이 올렸던 조각(이름이 든 옛 사본일 수 있음)은 지워요
+ for(let i=n;i<(CLOUD.n0||n);i++){ try{ await CLOUD.db.doc(CLOUD.col+'/c'+i).delete(); }catch(e){} } CLOUD.n0=n;
 }
 function mergeDB(a,b){ // a: 클로드에 있던 것, b: 이 기기 것 → id 기준 합치기 (같은 id는 a)
  const out=Object.assign({},b,a);
@@ -1011,6 +1015,8 @@ function mergeDB(a,b){ // a: 클로드에 있던 것, b: 이 기기 것 → id �
  if(typeof mergeMine==='function') mergeMine(out,a,b);
  out.monthly={}; for(const src of [b.monthly||{},a.monthly||{}]) for(const [uk,obj] of Object.entries(src)) out.monthly[uk]=Object.assign({},out.monthly[uk]||{},obj);
  const bu=new Map((b.users||[]).map(u=>[u.id,u])); out.users.forEach(u=>{ const o=bu.get(u.id); if(o&&o.terms&&(!u.terms||o.terms>u.terms)){ u.terms=o.terms; u.termsAt=o.termsAt; } });
+ // 저장소 사본에는 고객 이름·메모가 없어요. 같은 기록이면 이 기기에 있던 이름·메모를 그대로 둬요
+ const bq=new Map((b.qlogs||[]).map(r=>[r&&r.id,r])); out.qlogs=out.qlogs.map(r=>{ const o=bq.get(r.id); if(!o||o===r||(o.cust===undefined&&o.next===undefined)) return r; const x=Object.assign({},r); if(x.cust===undefined&&o.cust!==undefined) x.cust=o.cust; if(!x.next&&o.next) x.next=o.next; return x; });
  out.meId=a.meId||b.meId; return out;
 }
 function relinkMe(){ const id=(ME&&ME.id)||lsMe()||DB.meId; const u=id?userById(id):null; ME=u&&!isEx(u)?u:null; if(ME){ DB.meId=ME.id; lsMe(ME.id); } }
@@ -1021,6 +1027,7 @@ async function cloudFlush(){
   const meta=await CLOUD.db.doc(CLOUD.col+'/meta').get();
   if(meta.exists&&meta.data().rev!==CLOUD.rev){ const r=await cloudPull(); if(r&&!r.broken){ const n0=(DB.qlogs||[]).length; DB=mergeDB(mergeSeed(r.data),DB); relinkMe(); if((DB.qlogs||[]).length!==n0&&!LIVE) render(); } }
   await cloudPush(); CLOUD.state='cloud';
+  await callsPush();
  }catch(e){ if(e&&e.code==='invalid_argument'){ CLOUD.on=false; CLOUD.state='local'; } else { CLOUD.state='cloud'; if(e&&e.code==='quota_exceeded') toast('저장 공간이 꽉 찼어요. 오래된 연습 기록을 지워 주세요.'); } }
  CLOUD.busy=false; cloudBadge();
 }
@@ -1034,7 +1041,7 @@ async function cloudInit(){
   CLOUD.db=db; CLOUD.col='data/users/'+id;
   const r=await cloudPull();
   if(r&&!r.broken){ DB=mergeDB(mergeSeed(r.data),DB); CLOUD.rev=r.rev; }
-  CLOUD.on=true; await cloudPush(); CLOUD.state='cloud';
+  CLOUD.on=true; CLOUD.uid=id; await cloudPush(); CLOUD.state='cloud'; callsPush();
   try{ localStorage.setItem(LS_KEY,JSON.stringify(DB)); }catch(e){}
  }catch(e){ CLOUD.on=false; CLOUD.state='local'; }
  relinkMe(); if(!LIVE) render(); cloudBadge();
@@ -1074,6 +1081,28 @@ async function sampleText(system,messages,maxTokens){
  catch(e){ const c=e&&e.code; throw new Error(c==='not_granted'?'클로드 사용을 허락해야 AI 피드백을 받을 수 있어요':c==='rate_limited'?'잠시 후 다시 눌러 주세요':'AI 피드백을 못 받았어요. 잠시 후 다시 눌러 주세요'); }
 }
 
+
+/* ---------- 통화 기록 모으기 (Claude판, 2026-11-22) ----------
+   사이트판은 서버 records 표에 올리지만, Claude판에서는 서버가 꺼져 있어요(srvOn). 그래서 같은 칸(srvRow)을
+   Claude 저장소 practice/<사람>/calls/<기록 id>에 올려요. 본인이 쓰고 주인이 읽어요(practice 규칙).
+   고객 이름(cust)·다음 연락 메모(next)는 없어요. 예시 기록·남에게서 받은 기록은 안 올려요. 바뀐 것만 다시 올려요. */
+const CALLS_SENT='cai.callsSent';
+async function callsPush(){
+ if(!CLOUD.on||!CLOUD.db||!CLOUD.uid||!ME||(typeof isEx==='function'&&isEx(ME))||CLOUD.callsBusy) return;
+ CLOUD.callsBusy=true;
+ try{
+  let sent={}; try{ sent=JSON.parse(localStorage.getItem(CALLS_SENT)||'{}')||{}; }catch(e){}
+  const col='practice/'+CLOUD.uid+'/calls';
+  for(const r of (DB.qlogs||[])){
+   if(!r||r.userId!==ME.id||r.demo||r.src==='import') continue;
+   const row=srvRow(r); row.user_id=''; delete row.user_id; row.who=ME.name||''; row.team=ME.team||''; row.company=ME.company||'';
+   const h=srvHash(JSON.stringify(row)); if(sent[r.id]===h) continue;
+   await CLOUD.db.doc(col+'/'+r.id).set(row); sent[r.id]=h;
+   try{ localStorage.setItem(CALLS_SENT,JSON.stringify(sent)); }catch(e){}
+  }
+ }catch(e){ /* 못 올리면 다음 저장 때 다시 해요 */ }
+ CLOUD.callsBusy=false;
+}
 /* ================= v0.5 · 처음 쓰는 사람 기준으로 정리 ================= */
 function aiOn(){ const s=DB.settings||{}; if(SAMPLE) return s.aiMode==='mine'||s.aiMode==='claude'||!s.aiPicked; return s.aiMode==='claude'&&!!ss('cai.key'); }
 
