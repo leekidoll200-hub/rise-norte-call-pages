@@ -3994,7 +3994,7 @@ function settingsView(v){
  <p class="sub">음성 연습은 마이크를 써요. 클로드 화면 안에서는 마이크가 막혀 있을 수 있어요.</p>
  <h2 style="margin-top:14px">내 정보</h2><div class="field"><label class="f" for="myPhone">내 번호 (카톡 템플릿에 들어가요)</label><input class="t" id="myPhone" value="${esc(ME.phone||'')}" placeholder="010-0000-0000"></div>
  <div class="field"><label class="f" for="myCo">회사 (대사에 들어가요)</label><input class="t" id="myCo" value="${esc(ME.company||'')}" placeholder="예: 메타리치"></div>
- <div class="row"><button class="btn pri" id="meSave">저장</button><button class="btn" id="theme">밝게/어둡게</button></div></div></div>`;
+ <div class="row"><button class="btn pri" id="meSave">저장</button></div></div></div>`;
  $('#aiSave',v).addEventListener('click',()=>{ s.aiMode=$('#aiMode').value; s.aiPicked=true; s.model=$('#aiModel').value; const k=$('#aiKey').value.trim(); if(k) ss('cai.key',k); save(); toast(s.aiMode==='claude'&&!ss('cai.key')?'키가 없어서 AI 없이 돌아가요':s.aiMode==='mine'&&!SAMPLE?'내 클로드에 올린 앱에서 열어야 AI를 써요':'저장했어요'); settingsView(v); });
  $('#aiClear',v).addEventListener('click',()=>{ ss('cai.key',null); toast('키를 지웠어요'); settingsView(v); });
  $('#aiTest',v).addEventListener('click',async()=>{ const k=$('#aiKey').value.trim(); if(k) ss('cai.key',k); s.model=$('#aiModel').value; try{ const t=await callClaude('한 단어로만 답해.',[{role:'user',content:'연결 확인. "성공"이라고만 답해.'}],10); toast('연결됨: '+t); }catch(e){ toast(e.message); } });
@@ -4003,7 +4003,7 @@ function settingsView(v){
  $('#vRate',v).addEventListener('change',()=>speak('네 여보세요? 누구세요?'));
  $('#vName',v).addEventListener('change',e=>{ s.voice=e.target.value; save(); });
  $('#meSave',v).addEventListener('click',()=>{ ME.phone=$('#myPhone').value.trim(); ME.company=$('#myCo').value.trim(); save(); toast('저장했어요'); });
- $('#theme',v).addEventListener('click',()=>{ const r=document.documentElement; const cur=r.getAttribute('data-theme'); const dark=cur?cur==='dark':matchMedia('(prefers-color-scheme: dark)').matches; r.setAttribute('data-theme',dark?'light':'dark'); });
+ /* 밝게/어둡게 버튼은 뺐어요(2026-11-22). 앱은 늘 밝은 화면이에요. 저장 옆에 있어 잘못 눌려 화면이 검게 바뀌었어요. */
 }
 
 /* ================= 10. 음성 ================= */
