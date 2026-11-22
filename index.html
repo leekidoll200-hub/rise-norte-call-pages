@@ -483,6 +483,16 @@ ol.ctl{list-style:none;margin:10px 0 2px;padding:0 0 0 14px;border-left:2px soli
 @media (max-width:560px){.ctiles{grid-template-columns:repeat(2,minmax(0,1fr))}.ctile b{font-size:22px}}
 /* 홈 빠른 길이 다섯 개가 돼서 넓은 화면에서는 한 줄에 다섯 개 */
 @media (min-width:861px){.quick{grid-template-columns:repeat(5,minmax(0,1fr))}.quick .qa{padding:16px}}
+/* 선배 시범 (내가 고객) */
+.sn-cta{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:14px}
+.sn-cta p{margin:4px 0 0}
+.sn-chips{display:flex;flex-wrap:wrap;gap:6px}
+.sn-chip{cursor:pointer;border:1px solid var(--line);background:var(--card);font:inherit;font-size:13px}
+.msg.sys.sn-why{align-self:flex-start;max-width:82%;text-align:left;font-size:12px;padding:0 4px 4px 10px;border-left:2px solid var(--line)}
+.sn-pick{display:block;width:100%;text-align:left;margin:6px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);font:inherit;cursor:pointer;overflow-wrap:anywhere}
+.sn-pick .sub{display:block;margin-top:4px;font-size:12px}
+.sn-pick.on{border-color:var(--navy);box-shadow:0 0 0 2px var(--navy) inset}
+.sn-me{margin:4px 2px;font-size:13px;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -2888,6 +2898,461 @@ function callLog(v){
  $('#hNoans',w).addEventListener('click',()=>{ const c=liveCfg(); const r=logNoans(c.db||'퍼미션',c.seg||''); LAST_NOANS=r.id; toast('부재 1건 기록했어요'); render(); });
  noansNote(v);
 }
+/* ================= 선배 시범 ("내가 고객") 2026-11-20 =================
+   통화 연습의 거꾸로 갈래. 연습하는 사람이 고객이 되고, 앱이 선배 설계사가 돼요.
+   AI 없이 규칙으로 돌아요. 대사는 멘트 묶음(흐름 7단계 · 반응 카드 17개)과 docs/RULES.md를 따라요.
+   선배가 한 말마다 "왜"를 붙여요. 점수·난이도는 없어요.
+   기록은 DB.seniorRuns[]에 따로 쌓아요(연습 점수 통계와 섞지 않음). 계획: docs/plan.md */
+let SENIOR=null; // null | {choosing:true} | 진행 중 세션 | {done:true,…}
+
+/* ---- 날짜 두 개 만들기 (오늘 기준 실제 날짜) ---- */
+const SN_DAY=['일','월','화','수','목','금','토'];
+function snHourKo(h,m){ const mm=m?' 반':''; if(h<12) return `오전 ${h}시${mm}`; if(h===12) return `낮 12시${mm}`; if(h<18) return `오후 ${h-12}시${mm}`; return `저녁 ${h-12}시${mm}`; }
+function snSlot(d,h,m){ const now=snNow(); const days=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-new Date(now.getFullYear(),now.getMonth(),now.getDate()))/864e5);
+ const wd=SN_DAY[d.getDay()]+'요일'; const near=days===0?'오늘 ':(days===1?'내일 ':'');
+ const say=days<=6?`${near||''}${near?'':wd+' '}${snHourKo(h,m)}`.trim():`${d.getMonth()+1}월 ${d.getDate()}일 ${wd} ${snHourKo(h,m)}`;
+ return {y:d.getFullYear(),mo:d.getMonth()+1,d:d.getDate(),wd,h,m:m||0,say,full:`${d.getMonth()+1}월 ${d.getDate()}일 ${wd} ${snHourKo(h,m)}`}; }
+function snNow(){ return SN_TODAY?new Date(SN_TODAY):new Date(); }
+let SN_TODAY=null; // 검사용으로 오늘을 고정할 때만 씀
+function snAdd(base,n){ const d=new Date(base); d.setDate(d.getDate()+n); return d; }
+/* kind: day(평일 낮) eve(평일 저녁) wkd(주말) am(평일 오전) mix(주말 오전+평일 저녁). from: 며칠 뒤부터 */
+function snSlots(kind,from){
+ const base=snAdd(snNow(),Math.max(1,from||1)); const out=[];
+ const wkday=d=>d.getDay()>=1&&d.getDay()<=5, wkend=d=>d.getDay()===0||d.getDay()===6;
+ const hours={day:[14,16],eve:[19,19],am:[10,11],wkd:[11,14]}[kind]||[14,16];
+ if(kind==='mix'){ let d=base; while(!wkend(d)) d=snAdd(d,1); const sat=d; let e=base; while(!wkday(e)) e=snAdd(e,1); return [snSlot(sat,11),snSlot(e,19)]; }
+ let d=base; for(let i=0;i<21&&out.length<2;i++,d=snAdd(d,1)){ if(kind==='wkd'?wkend(d):wkday(d)) out.push(snSlot(d,hours[out.length])); }
+ return out;
+}
+/* 고객이 직접 말한 때("다음 주 화요일 저녁 7시", "내일 3시") → 슬롯. 요일이나 날 중 하나와 시각이 있어야 해요 */
+function snParseTime(text,defDay){
+ const t=normText(text).replace(/((이번|다음)\s*주\s*)?((월|화|수|목|금|토|일)요일|주말|평일|오전|오후|저녁|낮)\s*(은|는|엔|에는)?\s*(안\s*(되|돼)|어렵|힘들|못)[가-힣]*\s*/g,' '); let day=null; const now=snNow();
+ const wk=t.match(/(이번|다음|다다음)?\s*주?\s*(월|화|수|목|금|토|일)요일/);
+ if(/오늘/.test(t)) day=now; else if(/모레/.test(t)) day=snAdd(now,2); else if(/내일/.test(t)) day=snAdd(now,1);
+ else if(wk){ const want=SN_DAY.indexOf(wk[2]); let d=snAdd(now,1); while(d.getDay()!==want) d=snAdd(d,1); if(wk[1]==='다음'&&(d-now)/864e5<7&&now.getDay()!==0) { if(d.getDay()>now.getDay()||now.getDay()===0) d=snAdd(d,7); } if(wk[1]==='다다음') d=snAdd(d,14); day=d; }
+ else if(/주말/.test(t)){ let d=snAdd(now,1); while(d.getDay()!==6) d=snAdd(d,1); day=d; }
+ let h=null, m=0; const hm=t.match(/(\d{1,2})\s*시(\s*반)?/);
+ if(hm){ h=+hm[1]; m=hm[2]?30:0; if(/(오후|저녁|밤)/.test(t)&&h<12) h+=12; else if(!/(오전|아침)/.test(t)&&h>=1&&h<=8) h+=12; }
+ else if(/저녁|퇴근/.test(t)) h=19; else if(/점심/.test(t)) h=12; else if(/오전|아침/.test(t)) h=10; else if(/오후/.test(t)) h=14;
+ if(!day&&h===null) return null;
+ if(!day){ if(!hm) return null; if(defDay) day=defDay; else day=(h>now.getHours()+1)?now:snAdd(now,1); }
+ if(h===null) return {dayOnly:true,slot:snSlot(day,day.getDay()===0||day.getDay()===6?11:14)};
+ return {slot:snSlot(day,h,m)};
+}
+function snPref(text){ const t=normText(text); if(/(저녁|퇴근|밤에|일\s*끝나)/.test(t)) return 'eve'; if(/(주말|토요일|일요일)/.test(t)) return 'wkd'; if(/(오전|아침)/.test(t)) return 'am'; return null; }
+
+/* ---- 고객 말 알아듣기 ---- */
+const SN_RX={
+ stop:/(전화\s*(하지|주지)\s*마|연락\s*(하지|주지)\s*마|다시는|귀찮게|신고|그만\s*(하세요|좀|전화))/,
+ notneed:/(필요\s*없|안\s*해도\s*(돼|되|괜찮)|관심\s*(없|안)|됐(어|고|다|습|거든)|안\s*할(래|게|\s*거|\s*께)|안\s*해요|안\s*해\s*[.!~ㅡ-]*$|안\s*한다|안\s*합니다|안\s*하겠|안\s*하고\s*싶|안\s*할\s*건|싫(어|다|습|은데)|그만\s*(하|할|해|좀)|괜찮(아요|습니다|어요|아|은데|다니까|거든)|충분해|필요\s*없다니까|이미\s*(다\s*)?있|보험\s*(이\s*|은\s*)?많|많이\s*들어|다\s*들어\s*있)/,
+ remember:/(기억\s*(이\s*)?(안|없|잘)|신청\s*(안\s*했|한\s*적|했었나|했나)|동의\s*(했었나|한\s*적|안\s*했)|그런\s*(거|적)\s*(없|안\s*했)|모르는\s*번호)/,
+ callbackQ:/(전화\s*(주셨|하셨|왔던|왔는데)|부재중)/,
+ who:/(누구(세요|시죠|신데|시라고|시라구)|어디(세요|시죠|시라고|라고요)|뭐\s*하시는\s*분|어디서\s*(전화|연락))/,
+ number:/(번호\s*(는\s*)?(어떻게|어디서)|어떻게\s*알(고|았))/,
+ later:/(한두\s*달|두어\s*달|몇\s*달|다음\s*달|내년|연말|요즘\s*(좀\s*)?바빠|당분간|나중에\s*(할게|볼게|하면))/,
+ trip:/(출장|여행|해외|외국|지방에\s*(가|있)|자리\s*(를\s*)?비|(\d|한|두|세)\s*주\s*(동안|간|정도)?\s*(없|안\s*계|못))/,
+ notime:/(볼\s*시간\s*(이\s*)?없|(그런\s*거|그거)\s*(볼|할)\s*시간|시간이\s*없어서|사업하느라|장사하느라|일하느라\s*바빠)/,
+ busy:/(밥|식사|잠깐만|운동\s*중|병원(이에요|에\s*있)|밖이에요|밖에\s*있|외출|바빠|바쁘|운전|회사(예요|에요|라서|라|인데)|근무\s*중|일하는\s*중|일하고\s*있|회의|미팅|수업\s*중|지금은?\s*(좀\s*)?(안\s*돼|곤란|어려)|통화\s*(가|하기)?\s*(어려|곤란|힘들)|나중에\s*(전화|연락)|이따(가)?\s*(전화|연락|해))/,
+ daywork:/(낮(에|엔|에는)?\s*(일|회사|없|안\s*돼|못)|평일(에|엔|은)?\s*(일|회사|안\s*돼|어려|못)|직장\s*다녀|출근)/,
+ think:/(생각해\s*(볼|보고|봐)|고민(해|좀)|상의|남편(이랑|하고|한테)|아내(랑|하고)|와이프|애들(이랑|하고)|가족(이랑|하고)\s*(얘기|상의))/,
+ cancel:/(해약|해지|깨려|정리하려|보험료\s*(가\s*)?(너무\s*)?(올라|비싸|부담))/,
+ benefit:/(혜택|내기만|돈만\s*내|받은\s*(게|건)\s*없|뭐가\s*좋)/,
+ age:/(나이\s*(가\s*)?(많|있|들)|늙|(6|7|8)0\s*(대|살|넘)|노인)/,
+ duration:/(몇\s*분|얼마나\s*걸|오래\s*걸|시간\s*(이\s*)?(많이|오래|얼마))/,
+ gift:/(사은품|선물|상품권|뭐\s*주)/,
+ family:/(가족|동생|언니|오빠|형|누나|딸|아들|남편|아내|와이프|사촌|조카|엄마|아빠|친척|며느리|사위)(이|가)?\s*(설계사|보험\s*(해|일|하))/,
+ agent:/(설계사|담당(자|하는\s*분|\s*분)|아는\s*(분|사람|언니|형|동생)|지인|보험\s*하는\s*(친구|사람|분|언니|동생))/,
+ visitNo:/((방문|만나|만나야|만나는|만나서|집으로|집에|찾아오|찾아와|오시는|대면).{0,20}(싫|부담|좀\s*그|안\s*돼|안\s*되|어려|곤란))/,
+ phone:/(전화로\s*(해|하|설명|주|만)|집에\s*(오|와|찾아)|방문(은|이|하)?\s*(싫|좀|부담|안)|오시는\s*건|만나는\s*건\s*(좀|싫|부담)|집에\s*없|만나기\s*(싫|부담)|대면은|왔다\s*갔다)/,
+ insurance:/(보험\s*(이에요|이죠|인가요|이요|들라|가입하라)|무슨\s*보험|보험\s*회사)/,
+ selling:/(팔려|팔라|영업|권유|가입\s*시키|장사)/,
+ cost:/(돈\s*(들|내|드)|비용|유료|무료|공짜)/,
+ whyMeet:/(왜\s*(만나|봐야|해야)|굳이|만나서\s*뭐)/,
+ product:/(상품\s*(얘기|소개|권|팔|말)|가입\s*(하라|시키|권)|뭐\s*팔)/,
+ kakao:/((카톡|문자|메일)으?로\s*(보내|주|해|알려))/,
+ done:/((저번에|예전에|전에|작년에)\s*(상담|정리|다\s*처리|다\s*봤|봤)|다\s*처리|정리\s*(다\s*)?했|다\s*봤어)/,
+ impatient:/(그래서요|빨리|용건만|짧게|본론|요점|결론)/,
+ bye:/(끊을게요|끊겠습니다|끊어요|안녕히|들어가세요|수고하세요)/,
+ yes:/(^|\s)(네|예|좋아요|좋습니다|그래요|그러죠|괜찮아요|괜찮습니다|돼요|됩니다|그날|그때|그걸로|그렇게\s*해|오케이|알겠)/,
+ no:/(안\s*돼|안\s*되|어려워|어렵|힘들|못\s*(해|가|만나)|별로|둘\s*다)/,
+ first:/(앞에|첫\s*번째|첫째|먼저\s*(말씀|거)|전자)/,
+ second:/(뒤에|두\s*번째|둘째|후자|나중\s*거|뒤엣)/,
+ unknown:/(몰라|모르|글쎄|잘\s*(모|몰)|처음\s*(들|알)|기억\s*(안|이\s*안)|헷갈|확인\s*(안|못)|생각\s*안\s*나|그런\s*게\s*있|그런\s*거\s*있|있나|있었나|뭐더라|뭐지|인가\?|인가요\?|일걸|거예요\?)/,
+ rarely:/(가끔|필요할\s*때|별로|거의|안\s*(줘|주|와|해)|없어요|잘\s*안|연락\s*없|모르겠|글쎄)/,
+ often:/(자주|잘\s*챙|잘\s*해\s*(줘|주)|신경\s*(써|쓰)|매달|매번|항상|늘)/,
+};
+/* 거절인가? "월요일 괜찮아요"처럼 날짜를 받아들이는 "괜찮아요"만 빼요 */
+const SN_NEG=/(아뇨|아니|괜찮|됐|싫|안\s|안[가-힣]|글쎄|별로|나중|다음에|생각해|모르|몰라)/;
+function snRefuse(t){ if(!SN_RX.notneed.test(t)) return false; if(/괜찮/.test(t)&&!/(필요\s*없|관심\s*없|안\s*해|됐|싫)/.test(t)&&snParseTime(t)) return false; return true; }
+/* 질문 3개 (흐름 3단계). know: 안다/챙겼다, gap: 빈 곳 */
+const SN_Q=[
+ {id:'silbi',ask:'지금 실비가 몇 세대인지 아세요?',know:/((\d|일|이|삼|사|오)\s*세대|알아요|알죠|알고\s*있|실비\s*없)/,gap:/^\s*(아뇨|아니요|아니오)\s*[.!…]*\s*$/,
+  then:'많이들 모르세요. 2013년 3월 이전에 든 실비는 갈아타기 할인이 있는데, 바꾸면 손해인 분도 있어요.'},
+ {id:'gov',ask:'병원비가 1년에 많이 나오면 나라에서 돌려주는 돈이 있는데, 신청해 보신 적 있으세요?',know:/(있어요|해\s*봤|받아\s*봤|받았|신청했)/,gap:/(없어요|아뇨|아니요|아니오|안\s*해\s*봤|안\s*했|한\s*적\s*없|못\s*했|처음)/,
+  then:'그 돈은 안 찾아가면 3년 지나 사라져요.'},
+ {id:'renew',ask:'가지고 계신 보험 중에 갱신형이 있는지 아세요?',know:/(있어요|없어요|알아요|알죠|비갱신)/,gap:/^\s*(아뇨|아니요|아니오)\s*[.!…]*\s*$/,
+  then:'갱신 때마다 나이 따라 보험료가 다시 계산돼요.'},
+];
+const SN_ORD=['첫 번째요','두 번째요','세 번째요'];
+const SN_SKILL={intro:'허락 대신 "1분만"',main:'설명 대신 바로 질문',remember:'"기억 안 나요"는 맞장구 뒤 바로 본론',gap:'"모른다"가 만날 이유',verdict:'부탁 아닌 판정',dates:'날짜는 내가 두 개',place:'장소도 둘 중 하나',recap:'끊기 전 복창',
+ busy:'바쁘면 시각만 정하고 끊기',time:'시간 거절은 날짜로',benefit:'불만이 곧 니즈',agent:'담당자보다 관리 공백',visit:'방문 거절엔 한 번, 고객이 얻는 것',phone:'두 번째 방문 거절엔 방문 없는 길',cancel:'해약 전에 먼저 보기',stop:'거절 두 번이면 바로 끝',gift:'사은품은 조건으로 안 걸기',
+ notneed:'가벼운 거절은 한 번만 받기',insurance:'보험인 걸 숨기지 않기',selling:'안 해도 된다고 먼저 말하기',duration:'걸리는 시간은 있는 그대로',age:'관심 신호는 바로 날짜로',allknown:'다 알면 소개 부탁하고 끝',daywork:'시간이 안 맞으면 시간을 맞추기',done:'"다 했어요"엔 그 뒤에 바뀐 것',kakao:'카톡은 주되 정리는 만나서',product:'상품 얘기는 먼저 안 꺼내기',cost:'궁금한 건 한 문장으로 답하고 이어 가기',who:'누군지 다시 짧게',bye:'끊겠다면 붙잡지 않기'};
+
+function snNew(pid){
+ const p=pid?persona(pid):null;
+ const S={id:uid('sr'),userId:ME.id,personaId:pid||'',db:p?p.db:'퍼미션',old:p?/[6-9]0대/.test(p.age||''):false,startedAt:new Date().toISOString().slice(0,16),
+  phase:'intro',qi:0,unk:[],known:[],hits:{},no:0,slots:null,slotTries:0,unclear:0,pick:null,pend:null,pref:null,place:null,turns:[],outcome:null};
+ const open=p?p.opening:'여보세요.';
+ S.turns.push({who:'me',text:open});
+ snReply(S,open,true);
+ return S;
+}
+function snSay(S,parts,tags){ parts=parts.filter(Boolean); const text=fill(parts.filter(Boolean).map(x=>x.text||x).join(' ')).replace(/\s+/g,' ').trim(); const why=parts.map(x=>x.why).filter(Boolean);
+ S.turns.push({who:'sen',text,why:why.join(' '),tags:tags||[]}); }
+function snEnd(S,outcome){ S.outcome=outcome; S.phase='end'; }
+const snW=(text,why)=>({text,why});
+function snOffer(S,kind,from){ S.slots=snSlots(kind||S.pref||'day',from);
+ if(S.wish&&!from){ const w=S.wish; S.wish=null; const h2=w.h>=17?w.h-2:w.h+2; S.slots=[w,snSlot(new Date(w.y,w.mo-1,w.d),h2)]; } S.phase='date'; return `${S.slots[0].say}랑 ${S.slots[1].say} 중에 언제가 편하세요?`; }
+function snResume(S){
+ if(S.phase==='intro') return snMain(S);
+ if(S.phase==='q') return snW(`${SN_ORD[S.qi]}, ${SN_Q[S.qi].ask}`);
+ if(S.phase==='date'&&S.slots) return snW(`${S.slots[0].say}랑 ${S.slots[1].say} 중에 언제가 편하세요?`);
+ if(S.phase==='place') return snW('댁이랑 근처 카페 중에 어디가 편하세요?');
+ return null;
+}
+function snMain(S){
+ if(S.db==='방송'){ return snW('갖고 계신 보험은 그대로 두고, 놓친 보험금은 없는지 같이 봐 드려요. '+snOffer(S),'방송 DB는 고객이 직접 신청했어요. 질문 없이 바로 날짜로 가요. 설명이 길어지면 거절이 나와요.'); }
+ S.phase='q'; S.qi=0; S.askedQ=true;
+ return snW(`이게 모든 분께 필요한 건 아니라서, 해당되시는지만 볼게요. 첫 번째요, ${SN_Q[0].ask}`,'"모든 분께 필요한 건 아니라서"는 아무한테나 거는 전화가 아니라는 신호예요. 설명하지 않고 바로 질문을 던져요.');
+}
+function snRecap(S,phone){
+ const s=S.pick; snEnd(S,'약속');
+ if(phone) return snW(`그럼 ${s.full}에 전화로 설명드릴게요. 끊고 바로 동의 링크 카톡으로 보내 드릴게요.`,'끊기 전에 월·일·요일·시각을 한 번에 복창해요. "연락드릴게요"로 끝난 통화는 흐지부지돼요.');
+ return snW(`그럼 ${s.full}, ${S.place}에서 뵙겠습니다. 끊고 바로 카톡으로 명함이랑 위치 보내 드릴게요.`,'끊기 전에 월·일·요일·시각·장소를 한 번에 복창해요. 상세 주소는 묻지 않아요.');
+}
+/* 거절·질문 받기. 처리했으면 true */
+function snObjection(S,t){
+ const R=SN_RX, hit=k=>{ S.hits[k]=(S.hits[k]||0)+1; return S.hits[k]; };
+ const visit=(R.phone.test(t)||R.visitNo.test(t))&&!R.stop.test(t);
+ if(['later','trip','notime','busy','think','agent','done','kakao'].some(k=>R[k].test(t))||(visit&&!S.hits.visit&&S.pend!=='phone')) S.obj=(S.obj||0)+1;
+ if(R.stop.test(t)){ snSay(S,[snW('네, 알겠습니다. 먼저 연락드리지 않을게요.','연락하지 말라고 하면 바로 끝내요. 거부한 뒤에 계속 권하면 금소법상 부당권유예요. 마무리 문자도 권유 없이 한 번만.')],['stop']); snEnd(S,'종료'); return true; }
+ if(visit&&S.pend!=='phone'){
+  if(S.phase==='place'){ hit('visit'); return snPhone(S); }
+  const firmV=/(니까|니깐|다고요|라고요|다구요|라구요|싫다고|몇\s*번)/.test(t);
+  if(!S.hits.visit&&!firmV){ hit('visit');
+   snSay(S,[snW('저 좋자고 뵙는 게 아니라, 만나면 가입 내역을 화면으로 같이 보면서 놓친 보험금을 바로 짚어 드릴 수 있어서요. '+snOffer(S),'방문이 싫다고 하면 한 번은 "고객님이 얻는 것"으로 다시 물어요. 내가 아니라 고객 득을 말해요. 그래도 싫다면 방문 없이.')],['visit','dates']); return true; }
+  hit('visit'); return snPhone(S);
+ }
+ if(snRefuse(t)){
+  S.no++;
+  // 다그치는 말투("안 한다니까", "싫다고요")면 첫 거절이어도 바로 끝내요
+  const firm=/(니까|니깐|다고요|라고요|다구요|라구요|다고\s*했|라고\s*했|몇\s*번|됐다고|싫다고|아\s*진짜|짜증)/.test(t);
+  if(S.no>=2||(S.obj||0)>=2||firm){ snSay(S,[snW('네, 알겠습니다. 먼저 연락드리지 않을게요.','"필요 없다"가 두 번이면 바로 끝내요. 거부 뒤에 계속 권하면 금소법상 부당권유예요.')],['stop']); snEnd(S,'종료'); return true; }
+  if(!S.askedQ&&!S.firm1){ S.firm1=true; S.askedQ=true; S.phase='q'; S.qi=0;
+   snSay(S,[snW('네, 부담 갖지 않으셔도 돼요. 모든 분께 필요한 건 아니라서 몇 가지만 확인하고, 해당 없으시면 말씀하신 대로 바로 끊을게요. 첫 번째요, '+SN_Q[0].ask,'첫 거절엔 날짜를 밀지 않아요. "몇 가지만 보고 아니면 끊겠다"로 부담을 내려 주고, 쉬지 말고 바로 질문으로 가요. 고객 입에서 "모르겠다"가 나오면 그게 만날 이유가 돼요.')],['notneed','main']); return true; }
+  const head=S.old?'독감주사도 나라에서 해 주니까 걸리기 전에 맞으시잖아요. 보험도 아프고 나면 고치기 어려워서, 미리 한 번 봐 드리는 거예요.':'독감주사도 걸린 다음에 맞으면 소용없잖아요. 보험도 아프고 나면 고치기 어려워서, 미리 한 번 봐 드리는 거예요.';
+  snSay(S,[snW(head+' '+snOffer(S),'가벼운 거절은 한 번만 받아요. 비유 한 문장 + 날짜 두 개. 두 번째 "필요 없다"엔 바로 끝내요.'+(S.old?' 65세 이상은 "나라에서 해 주는 독감주사"로 시작해요.':''))],['notneed','dates']); return true; }
+ if(R.remember.test(t)){ hit('remember'); const r=snResume(S); snSay(S,[snW('네~ 기억 안 나실 수 있어요, 맞아요. 빠르게 통화가 이뤄져서 그러실 거예요. 그래서 연락드린 건데요,','기억 못 하는 건 당연해요. 맞장구 한 번 치고 쉬지 말고 바로 본론으로 가요. "기억하세요?"라고 먼저 묻지 않아요.'),r],['remember',S.phase==='q'?'main':'']); return true; }
+ if(R.callbackQ.test(t)&&S.turns.filter(x=>x.who==='sen').length===0){ S.phase='intro'; snSay(S,[snW('네, 급한 건 아니에요. CJ온스타일 통해 보장 점검 맡게 된 {내회사} {내이름}인데, 1분만 말씀드릴게요.','부재중 보고 건 고객은 급한 일인 줄 알아요. "급한 건 아니에요"로 먼저 안심시켜요.')],['intro']); return true; }
+ if(R.who.test(t)){ const n=hit('who'); const r=S.phase==='intro'?snMain(S):snResume(S); snSay(S,[snW(n>1?'CJ온스타일 통해 상담 맡게 된 {내이름}입니다.':'CJ온스타일 통해 상담 맡게 된 {내회사} {내이름}입니다.','누군지 물으면 소속·이름만 짧게 다시 말하고 바로 이어 가요.'),r],['who']); return true; }
+ if(R.number.test(t)){ const r=S.phase==='intro'?snMain(S):snResume(S); snSay(S,[snW(S.db==='방송'?'CJ온스타일 방송 보시고 상담 신청해 주셔서 연락드렸어요.':'CJ온스타일에서 보장 점검 연락에 동의해 주셔서 받은 번호예요.','번호를 어떻게 알았냐고 하면 어디서 왔는지 사실대로 한 문장.'),r],[]); return true; }
+ if(R.cancel.test(t)){ snSay(S,[snW('해약하시기 전에 꼭 먼저 보셔야 해요. 한 번 해지하면 같은 조건으로 다시 못 들어요. '+snOffer(S).replace(' 언제가 편하세요?',' 보시죠.'),'해약하려는 고객이 가장 급해요. 놓치지 말고 바로 날짜로.')],['cancel','dates']); return true; }
+ if(R.later.test(t)){ const n=hit('later'); if(n>1) return snDefer(S);
+  snSay(S,[snW('그럼 날짜만 정해 둘게요. '+snOffer(S,'mix',30).replace(' 언제가 편하세요?','요?')+' 그 전에 바뀌는 건 카톡으로 드릴게요.','"시간 되면 연락 줄게요"로 끝나면 연락이 안 와요. 먼 날이라도 지금 날짜를 잡아요.')],['time','dates']); return true; }
+ if(R.trip.test(t)){ const n=hit('trip'); if(n>1) return snDefer(S);
+  snSay(S,[snW('네, 그럼 다녀오신 뒤로 잡으면 돼요. '+snOffer(S,S.pref||'eve',15).replace(' 언제가 편하세요?','요?'),'출장은 시간 문제지 필요 없다는 게 아니에요. 다녀온 뒤 날짜로 바로 잡아요.')],['time','dates']); return true; }
+ if(R.daywork.test(t)&&S.phase!=='place'){ S.pref='eve'; snSay(S,[snW('그럼 퇴근하시고 저녁에 뵈면 돼요. 댁 아니어도 회사 근처 카페도 괜찮아요. '+snOffer(S,'eve').replace(' 언제가 편하세요?','요?'),'시간이 안 맞는 건 거절이 아니에요. 고객 시간에 맞춰서 날짜 두 개.')],['daywork','dates']); return true; }
+ if(R.notime.test(t)){ snSay(S,[snW('그래서 제가 정리해서 보여 드리는 거예요. 보통 30분 안팎이에요. '+snOffer(S).replace(' 언제가 편하세요?','요?'),'"볼 시간이 없다"는 지금 바쁜 게 아니라 부담이 크다는 말이에요. 걸리는 시간을 그대로 말하고 날짜로.')],['time','dates']); return true; }
+ if(R.done.test(t)&&!S.hits.done){ hit('done'); S.pend='done'; snSay(S,[snW('상담은 언제 받으셨어요? 그 뒤로 바뀐 게 있어서요.','"다 했어요"는 거절이 아니라 정보예요. 언제였는지 물으면 그 뒤에 바뀐 제도가 만날 이유가 돼요.')],['done']); return true; }
+ if(R.cost.test(t)){ const r=snResume(S); snSay(S,[snW('점검은 비용 없어요.','궁금한 건 한 문장으로 답하고 바로 이어 가요.'),r],['cost']); return true; }
+ if(R.product.test(t)){ const r=snResume(S); snSay(S,[snW('상품 얘기는 제가 먼저 안 꺼내요. 갖고 계신 것부터 봐 드려요.','경계하는 고객에겐 먼저 선을 그어 줘요.'),r],['product']); return true; }
+ if(R.whyMeet.test(t)){ const r=S.phase==='date'?snResume(S):snW(snOffer(S)); snSay(S,[snW('가입 내역을 조회해 봐야 답이 나와서요. 만나서 받을 돈·놓친 돈·새는 돈으로 정리해 보여 드려요.','"왜 만나요?"엔 만나서 보는 게 무엇인지 구체적으로 한 문장.'),r],['verdict','dates']); return true; }
+ if(R.kakao.test(t)&&S.pend!=='phone'){ const r=S.phase==='date'?snResume(S):snW(snOffer(S)); snSay(S,[snW('네, 카톡으로 제 명함은 먼저 보내 드릴게요. 정리는 화면을 같이 보면서 설명드려야 정확해서요.','카톡만 보내고 끝내면 흐지부지돼요. 보내 주되 만나는 이유를 한 문장으로.'),r],['kakao','dates']); return true; }
+ if(R.busy.test(t)&&S.phase!=='date'&&S.phase!=='place'){ const late=snNow().getHours()>=18; S.cb=late?snSlot(snAdd(snNow(),1),12):snSlot(snNow(),19); S.pend='callback';
+  snSay(S,[snW(`네, 그럼 ${S.cb.say}에 1분만 다시 드릴게요.`,'바쁘다면 설명을 이어 가지 말고 다시 걸 시각을 내가 정해요. "몇 시가 편하세요?"로 물으면 "모르겠다"가 나와요.')],['busy']); return true; }
+ if(R.think.test(t)){ const n=hit('think'); if(n>1) return snDefer(S);
+  snSay(S,[snW('네, 그럼 날짜만 잡아 두고 안 되시면 편하게 미뤄 주세요. '+snOffer(S).replace(' 언제가 편하세요?','요?'),'"생각해 볼게요"는 날짜를 잡아 두고 미뤄도 된다고 해요. 부담이 줄어요.')],['time','dates']); return true; }
+ if(R.benefit.test(t)){ snSay(S,[snW('그래서 확인해 드리는 거예요. 받을 수 있는데 안 받은 돈, 나라에서 신청해야 주는 돈부터 봐 드려요. '+snOffer(S),'"혜택이 뭐가 있냐"는 불만이 곧 니즈예요. 보험 일반론 설명은 하지 않아요.')],['benefit','dates']); return true; }
+ if(R.age.test(t)){ snSay(S,[snW('네, 확인해 볼 수 있어요. '+snOffer(S),'나이를 묻는 건 관심 신호예요. 바로 날짜로. 가입 나이는 상품마다 달라서 만나서 확인해요.')],['age','dates']); return true; }
+ if(R.duration.test(t)){ const r=snResume(S); snSay(S,[snW('보통 30분 안팎이에요. 보험이 많으시면 조금 더 걸려요.','걸리는 시간은 줄여 말하지도 늘려 말하지도 않아요.'),r],['duration']); return true; }
+ if(R.gift.test(t)){ snSay(S,[snW('사은품은 회사 기준대로 안내해 드릴게요. 점검은 '+snOffer(S),'사은품을 만남 조건으로 걸지 않아요. 안내만 하고 날짜로.')],['gift','dates']); return true; }
+ if(R.family.test(t)){ snSay(S,[snW('아 가족분이 하시면 그분께 챙겨 받으시는 게 제일 좋죠. 들어가세요.','가족이 담당자면 정중히 끝내요. 끼어들면 신뢰만 잃어요.')],['agent']); snEnd(S,'종료'); return true; }
+ if(R.agent.test(t)){ S.pend='agent'; snSay(S,[snW('좋네요. 그분이 먼저 연락 자주 주세요?','담당자가 있냐 없냐보다 관리가 비었는지를 찾아요. 그분을 깎아내리지 않아요.')],['agent']); return true; }
+ if(R.insurance.test(t)){ const r=snResume(S); snSay(S,[snW('네 맞아요, 보험 점검이에요. 가입 권유 전에 지금 갖고 계신 보험부터 봐 드려요.','보험인 걸 숨기지 않아요. "보험 때문은 아니고요"라고 하면 뒤에서 신뢰가 깨져요.'),r],['insurance']); return true; }
+ if(R.selling.test(t)){ const r=snResume(S); snSay(S,[snW('필요 없으면 안 하셔도 돼요. 다만 안 받은 보험금은 가입이랑 상관없이 원래 고객님 돈이에요.','"안 하셔도 돼요"를 먼저 말하면 경계가 풀려요. 그다음 고객 돈 얘기.'),r],['selling']); return true; }
+ return false;
+}
+function snPhone(S){ const s=snSlots(S.pref||'day',2); S.pick=snSlot(new Date(s[0].y,s[0].mo-1,s[0].d),15); S.pend='phone';
+ snSay(S,[snW(`그럼 방문 없이 할게요. 동의 링크 하나 보내 드릴 테니 인증만 해 주시면, 정리해서 ${S.pick.say}쯤 전화로 설명드려도 될까요?`,'두 번째 방문 거절엔 더 밀지 않고 방문 없는 길을 내놓아요. 결과 설명 때 "화면을 같이 봐야 정확해서요"로 만남을 다시 권해요.')],['phone']); return true; }
+function snDefer(S){ snSay(S,[snW('네, 그럼 편하실 때 연락 주세요. 제 연락처만 카톡으로 남겨 둘게요.','같은 이유로 두 번 미루면 더 밀지 않아요. 연락처만 남기고 끝내요.')],['bye']); snEnd(S,'종료'); return true; }
+
+/* 한 턴: 고객(연습하는 사람) 말 → 선배 대답 */
+function snReply(S,text,isOpen){
+ if(S.outcome) return;
+ const t=normText(String(text||'')).trim(); const R=SN_RX;
+ const pf=snPref(t); if(pf) S.pref=pf;
+ if(isOpen){ if(R.callbackQ.test(t)) { snObjection(S,t); return; }
+  snSay(S,[snW(S.db==='방송'?'안녕하세요, CJ온스타일 통해 상담 맡게 된 {내회사} {내이름}입니다. 방송 보시고 상담 신청해 주셔서, 방문 일정 잡으려고 연락드렸어요.':'안녕하세요, CJ온스타일 통해 상담 맡게 된 {내회사} {내이름}입니다. 1분만 말씀드릴게요.',
+   S.db==='방송'?'소속·이름·용건을 첫마디에. 직접 신청한 고객이라 바로 방문 일정 얘기로 가요.':'"통화 괜찮으세요?"처럼 허락을 묻지 않아요. 한 번 "아니요"라고 하면 고객은 그 말을 지키려 해요. 대신 "1분만"으로 부담을 작게 정해요.')],['intro']); return; }
+ // 기다리던 대답
+ if(S.pend==='callback'){ S.pend=null; if((R.stop.test(t)||snRefuse(t))&&snObjection(S,t)) return; const c=snParseTime(t);
+  if(c&&!c.dayOnly){ S.cb=c.slot; } else if(R.no.test(t)){ S.cb=snSlot(snAdd(snNow(),1),12); }
+  snSay(S,[snW(`네, ${S.cb.say}에 다시 드릴게요. 들어가세요.`,'다시 걸 시각만 확인하고 바로 끊어요. 길게 붙잡지 않아요.')],['busy']); snEnd(S,'다시 전화'); return; }
+ if(S.pend==='phone'){ const c=snParseTime(t);
+  if(c&&!c.dayOnly){ S.pend=null; S.pick=c.slot; snSay(S,[snRecap(S,true)],['recap']); return; }
+  if(R.no.test(t)&&!R.yes.test(t)){ const s=snSlots(S.pref||'day',3); S.pick=s[1]; snSay(S,[snW(`그럼 ${S.pick.say}는 어떠세요?`,'안 되면 다른 시각을 내가 하나 더 내놓아요.')],['dates']); return; }
+  if(R.stop.test(t)||snRefuse(t)) { S.pend=null; if(snObjection(S,t)) return; }
+  if(R.yes.test(t)&&!SN_NEG.test(t)){ S.pend=null; snSay(S,[snRecap(S,true)],['recap']); return; }
+  S.pend=null; snSay(S,[snW('네, 그럼 편하실 때 말씀 주세요. 들어가세요.','분명하게 "네"가 아니면 약속으로 치지 않아요.')],['bye']); snEnd(S,'보류'); return; }
+ if(S.pend==='done'){ S.pend=null; if((R.stop.test(t)||snRefuse(t))&&snObjection(S,t)) return;
+  snSay(S,[snW('그럼 그 뒤에 바뀐 제도는 못 보셨겠네요. 바뀐 것만 짧게 봐 드릴게요. '+(S.phase==='date'&&S.slots?`${S.slots[0].say}랑 ${S.slots[1].say} 중에 언제가 편하세요?`:snOffer(S)),'예전 상담 뒤로 바뀐 게 만날 이유예요. 예전 설계사를 깎아내리지 않아요.')],['done','dates']); return; }
+ if(S.pend==='agent'){ S.pend=null;
+  if(R.often.test(t)&&!R.rarely.test(t)){ snSay(S,[snW('잘 챙겨 주시는 분이 계시면 다행이에요. 혹시 실비 세대만 궁금하시면 그분께 한번 물어보세요. 들어가세요.','잘 챙겨 주는 담당자가 있으면 억지로 잡지 않아요. 좋은 인상만 남겨요.')],['agent']); snEnd(S,'종료'); return; }
+  const r=S.phase==='intro'?(S.db==='방송'?snW(snOffer(S)):(S.phase='q',S.qi=0,S.askedQ=true,snW(`${SN_ORD[0]}, ${SN_Q[0].ask}`))):snResume(S);
+  snSay(S,[snW('그럼 바뀐 건 못 들으셨겠네요. 실비 세대랑 안 받은 보험금만 봐 드릴게요.','먼저 연락이 없었다면 그게 관리 공백이에요. 바꾸자는 게 아니라 빈 곳만 보자고 해요.'),r],['agent']); return; }
+ // 날짜·장소를 고르는 중이면 날짜·장소 말이 먼저. 단, 거절·질문이 섞여 있으면 그걸 먼저 받아요("내일부터 출장" ≠ 내일)
+ const objIn=snRefuse(t)||['stop','trip','later','think','cancel','benefit','age','duration','gift','family','agent','insurance','selling','who','number','daywork','notime','done','cost','product','whyMeet','kakao'].some(k=>R[k].test(t));
+ if(S.phase==='date'&&!objIn){ if(snDate(S,t)) return; }
+ if(S.phase==='place'&&!objIn){ if(snPlace(S,t)) return; }
+ if(snObjection(S,t)) return;
+ if(R.bye.test(t)){ snSay(S,[snW('네, 들어가세요. 필요하실 때 편하게 연락 주세요.','끊겠다는 사람은 붙잡지 않아요.')],['bye']); snEnd(S,'종료'); return; }
+ if(S.phase==='intro'){ snSay(S,[snMain(S)],[S.db==='방송'?'dates':'main']); return; }
+ if(S.phase==='q'){ const w=snParseTime(t); if(w&&!w.dayOnly) S.wish=w.slot; }
+ if(S.phase==='q'&&isAsk(t)&&!R.impatient.test(t)&&!R.unknown.test(t)&&!SN_Q[S.qi].know.test(t)){ snSay(S,[snW('그건 만나서 정확하게 말씀드릴게요.','질문엔 길게 설명하지 않아요. 답은 만나서 드려요.'),snResume(S)],['main']); return; }
+ if(S.phase==='q') return snAnswer(S,t);
+ if(S.phase==='date'){ S.unclear++;
+  if(S.unclear>=2){ snSay(S,[snW('네, 그럼 날짜는 편하실 때 말씀 주세요. 들어가세요.','고객이 고르지 않았는데 내가 날짜를 정해 버리면 안 돼요. 두 번 흐리면 붙잡지 않고 끝내요.')],['bye']); snEnd(S,'보류'); return; }
+  snSay(S,[snW(`${S.slots[0].say}랑 ${S.slots[1].say} 중에 어느 쪽이 나으세요?`,'답이 흐려도 열린 질문으로 바꾸지 않아요. 두 개 중에 고르게 해요.')],['dates']); return; }
+ if(S.phase==='place'){ S.place='댁 근처 카페'; snSay(S,[snRecap(S)],['recap']); return; }
+}
+function snAnswer(S,t){
+ const R=SN_RX, q=SN_Q[S.qi];
+ let kind='neutral';
+ if(R.unknown.test(t)||(q.gap&&q.gap.test(t))) kind='gap'; else if(q.know.test(t)) kind='know';
+ if(kind==='gap') S.unk.push(q.id); else if(kind==='know') S.known.push(q.id);
+ const lead=kind==='gap'?snW(q.then,'"모르겠는데요"라고 자기 입으로 말한 순간 궁금증이 생겨요. 설명은 한 문장만 하고 다음으로.'):snW(kind==='know'?'잘 아시네요.':'네.',kind==='know'?'알고 있으면 짧게 인정하고 넘어가요.':'');
+ S.qi++;
+ if(S.qi<SN_Q.length&&!R.impatient.test(t)){ snSay(S,[lead,snW(`${SN_ORD[S.qi]}, ${SN_Q[S.qi].ask}`,S.qi===1&&kind!=='gap'?'질문은 하나 묻고, 짧게 받고, 다음. 답은 만나서 드려요.':'')],kind==='gap'?['gap']:['main']); return; }
+ // 판정 → 날짜
+ const asked=S.qi, N=S.unk.length;
+ if(!N&&S.known.length>=asked){ snSay(S,[snW('잘 챙기고 계시네요. 주변에 이런 거 모르실 것 같은 가족분 계시면 말씀해 주세요. 들어가세요.','다 알고 있으면 억지로 잡지 않아요. 소개를 부탁하고 정중히 끝내요.')],['allknown']); snEnd(S,'종료'); return; }
+ const head=N?`말씀드린 것 중에 ${['','하나','두 개','세 개'][N]}가 처음 들으신 거면 확인해 보셔야 하는 분이에요.`:'말씀드린 것 중에 하나라도 처음 들으신 거면 확인해 보셔야 하는 분이에요.';
+ snSay(S,[kind==='gap'?null:lead,snW(`${head} 가입 내역을 봐야 답이 나와서 만나서 정리해 드릴게요. ${snOffer(S)}`,'부탁이 아니라 판정으로 말해요. 날짜는 내가 두 개 제안해요. "언제가 편하세요?"만 물으면 "모르겠다"가 나와요.')],kind==='gap'?['gap','verdict','dates']:['verdict','dates']);
+}
+function snDate(S,t){
+ const R=SN_RX; let pick=null;
+ const s0=S.slots[0], c=snParseTime(t,new Date(s0.y,s0.mo-1,s0.d));
+ if(c&&!c.dayOnly) pick=c.slot;
+ else if(R.first.test(t)) pick=S.slots[0]; else if(R.second.test(t)) pick=S.slots[1];
+ else { const wd=(t.match(/(월|화|수|목|금|토|일)요일/)||[])[0]; if(wd){ pick=S.slots.find(s=>s.wd===wd)||null; } }
+ if(!pick&&c&&c.dayOnly){ const d=new Date(c.slot.y,c.slot.mo-1,c.slot.d); const we=d.getDay()===0||d.getDay()===6; S.slots=[snSlot(d,we?11:14),snSlot(d,we?15:19)];
+  snSay(S,[snW(`그럼 ${S.slots[0].say}랑 ${S.slots[1].say} 중에는요?`,'요일만 말하면 그날 안에서 시각 두 개를 내놓아요.')],['dates']); return true; }
+ if(pick){ S.pick=pick; S.phase='place'; snSay(S,[snW(`네, ${pick.say}로 할게요. 댁이랑 근처 카페 중에 어디가 편하세요?`,'장소도 두 개 중에 고르게 해요. 상세 주소는 묻지 않아요.')],['place']); return true; }
+ const pf=snPref(t);
+ if(pf&&!R.yes.test(t)){ snSay(S,[snW('그럼 '+snOffer(S,pf).replace(' 언제가 편하세요?',' 중에는요?').replace(' 중에 중에는요?',' 중에는요?'),'고객이 말한 때에 맞춰 다시 두 개를 내놓아요.')],['dates']); return true; }
+ if(R.no.test(t)&&!SN_RX.notneed.test(t)&&!SN_RX.busy.test(t)){ S.slotTries++;
+  if(S.slotTries>=3){ return snDefer(S); }
+  const k=['day','eve','wkd','am'][S.slotTries%4]; snSay(S,[snW('그럼 '+snOffer(S,S.pref||k,S.slotTries*4+1).replace(' 언제가 편하세요?',' 중에는요?').replace(' 중에 중에는요?',' 중에는요?'),'안 된다고 하면 다른 두 개를 바로 내놓아요. 열린 질문으로 바꾸지 않아요.')],['dates']); return true; }
+ if(R.yes.test(t)&&!R.no.test(t)&&!SN_NEG.test(t)){ S.pick=S.slots[0]; S.phase='place'; snSay(S,[snW(`그럼 ${S.pick.say}로 잡을게요. 댁이랑 근처 카페 중에 어디가 편하세요?`,'"네"만 하면 앞의 날로 정하고 바로 장소로 넘어가요.')],['place']); return true; }
+ return false;
+}
+function snPlace(S,t){
+ const R=SN_RX;
+ if(R.phone.test(t)||/전화로/.test(t)){ snSay(S,[snRecap(S,true)],['phone','recap']); return true; }
+ if(/(집|댁)/.test(t)&&!/(카페|근처)/.test(t)) S.place='댁';
+ else if(/(가게|매장|사무실)/.test(t)) S.place=t.match(/(가게|매장|사무실)/)[1];
+ else if(/회사|직장/.test(t)) S.place='회사 근처 카페';
+ else if(/(카페|근처|아무|상관|편한\s*(데|곳))/.test(t)||(R.yes.test(t)&&!SN_NEG.test(t))) S.place='댁 근처 카페';
+ else { if(snParseTime(t)){ S.phase='date'; return snDate(S,t); } return false; }
+ snSay(S,[snRecap(S)],['recap']); return true;
+}
+
+/* ---- 화면 ---- */
+const SN_CHIPS=['기억 안 나요','누구세요?','바빠요, 지금 회사예요','필요 없어요','생각해 볼게요','담당 설계사 있어요','전화로 해 주세요','몰라요','앞에 거요','댁 근처 카페요'];
+function seniorView(v){
+ if(SENIOR&&SENIOR.done) return seniorResult(v);
+ if(SENIOR&&SENIOR.choosing) return seniorPick(v);
+ const S=SENIOR, p=S.personaId?persona(S.personaId):null;
+ v.innerHTML=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><div><h1 style="margin:0">선배 시범 · 내가 고객</h1><p class="sub" style="margin:2px 0 0">${p?esc(p.name)+' 고객이 되어 보세요':'자유롭게 고객이 되어 보세요'} · 선배 말마다 "왜"가 붙어요 · <b>${snAiOn(S)?'AI 선배':'기본 선배'}</b></p></div><div class="row"><button class="btn" id="snQuit">그만두기</button><button class="btn pri" id="snEnd">${S.outcome?'정리 보기':'끝내고 정리 보기'}</button></div></div>
+ <div class="chatwrap"><aside class="card"><h2>내가 맡은 고객</h2>${p?`<p style="margin:0"><b>${esc(p.name)}</b> · ${esc(p.age)} ${esc(p.gender)} · ${esc(p.db)} DB</p><p class="sub" style="margin:4px 0 8px">${esc(p.known)}</p><p class="k">속사정 (선배는 몰라요)</p><p class="sub" style="margin:2px 0 8px">${esc(p.hidden||'')}</p>`:'<p class="sub" style="margin:0 0 8px">퍼미션 DB 고객이에요. 하고 싶은 대로 거절해 보세요.</p>'}
+  <p class="k">이렇게 말해 봐도 돼요 (누르면 입력칸에)</p><div class="sn-chips">${[...(p&&p.objections||[]),...SN_CHIPS].slice(0,12).map(x=>`<button class="chip sn-chip" type="button">${esc(x)}</button>`).join('')}</div></aside>
+ <section class="chat" aria-label="통화"><div class="msgs" id="snMsgs" aria-live="polite"></div>
+  <div class="composer"><textarea class="t" id="snSay" placeholder="고객으로서 할 말 (Enter 보내기)" ${S.outcome||S.busy?'disabled':''}></textarea><button class="btn gold" id="snSend" ${S.outcome||S.busy?'disabled':''}>보내기</button></div></section></div>`;
+ snDraw();
+ const send=async()=>{ const ta=$('#snSay'); const text=ta.value.trim(); if(!text||S.outcome||S.busy) return; ta.value='';
+  await snTurn(S,text, ()=>{ if(SENIOR===S&&VIEW==='practice') seniorView(v); });
+  if(SENIOR===S&&VIEW==='practice'){ seniorView(v); const n=$('#snSay'); if(n&&!S.outcome) n.focus(); } };
+ $('#snSend').addEventListener('click',send);
+ $('#snSay').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){ e.preventDefault(); send(); } });
+ $$('.sn-chip',v).forEach(b=>b.addEventListener('click',()=>{ const ta=$('#snSay'); if(ta&&!ta.disabled){ ta.value=b.textContent; ta.focus(); } }));
+ $('#snQuit').addEventListener('click',()=>{ if(confirmInline('선배 시범을 그만둘까요? 기록은 남지 않아요.')){ SENIOR=null; render(); } });
+ $('#snEnd').addEventListener('click',()=>seniorFinish());
+}
+function snDraw(){ const box=$('#snMsgs'); if(!box||!SENIOR) return; const S=SENIOR;
+ box.innerHTML=S.turns.filter(t=>!t.pending).map(t=>t.who==='me'?`<div class="msg me">${esc(t.text)}<small>나 (고객)</small></div>`:`<div class="msg cust">${esc(t.text)}<small>${t.ai?'AI 선배':'선배'}</small></div>${t.why?`<div class="msg sys sn-why">왜: ${esc(t.why)}</div>`:''}`).join('')+(S.busy?'<div class="msg sys">선배가 생각하는 중…</div>':'')+(S.outcome&&!S.busy?`<div class="msg sys">통화 끝 · 결과: ${esc(S.outcome)} · 위 "정리 보기"를 누르세요</div>`:'');
+ box.scrollTop=box.scrollHeight; }
+function snSkills(S){ const seen=[]; S.turns.forEach(t=>(t.tags||[]).forEach(k=>{ if(k&&SN_SKILL[k]&&!seen.includes(k)) seen.push(k); })); return seen; }
+function seniorFinish(){
+ const S=SENIOR; if(!S) return;
+ if(S.turns.filter(t=>t.who==='me').length<2){ toast('고객으로 한 마디는 하고 끝내요'); return; }
+ const rec={id:S.id,userId:S.userId,personaId:S.personaId,db:S.db,startedAt:S.startedAt,outcome:S.outcome||'보류',skills:snSkills(S),ai:S.turns.filter(t=>t.ai).length,turns:S.turns.map(t=>({who:t.who,text:t.text})),moved:null};
+ if(!Array.isArray(DB.seniorRuns)) DB.seniorRuns=[];
+ DB.seniorRuns.push(rec); save();
+ pracLog('senior',rec,S.turns);
+ SENIOR={done:true,rec,turns:S.turns}; render();
+}
+function seniorResult(v){
+ const R=SENIOR.rec, T=SENIOR.turns, p=R.personaId?persona(R.personaId):null;
+ v.innerHTML=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><h1 style="margin:0">선배 시범 정리</h1><div class="row"><button class="btn" id="snAgain">다시 해 보기</button><button class="btn pri" id="snBack">통화 연습으로</button></div></div>
+ <div class="grid g2"><div class="card"><p class="sub" style="margin:0 0 8px">${p?esc(p.name)+' '+esc(p.age)+' · ':''}${esc(R.db)} DB · 결과: <b>${esc(R.outcome)}</b></p>
+  <h2>선배가 쓴 기술</h2><div class="sn-chips">${R.skills.map(k=>`<span class="chip ok">${esc(SN_SKILL[k])}</span>`).join('')||'<span class="sub">없음</span>'}</div>
+  <p class="note" style="margin-top:12px">다음엔 설계사 쪽에서 같은 고객에게 이 기술을 써 보세요. 통화 연습 → 단계 → 고객.</p></div>
+ <div class="card"><h2>고객일 때 마음이 움직인 말은?</h2><p class="sub" style="margin:0 0 8px">하나만 눌러 주세요. 어떤 말이 먹히는지 모으는 데 써요.</p>
+  ${T.map((t,i)=>t.who==='sen'?`<button class="sn-pick${R.moved===i?' on':''}" data-i="${i}" type="button">${esc(t.text)}${t.why?`<span class="sub">왜: ${esc(t.why)}</span>`:''}</button>`:`<p class="sub sn-me">나: ${esc(t.text)}</p>`).join('')}</div></div>`;
+ $$('.sn-pick',v).forEach(b=>b.addEventListener('click',()=>{ R.moved=+b.dataset.i; R.movedText=T[R.moved].text; save(); pracLog('senior',R,T); toast('고마워요. 기록했어요.'); seniorResult(v); }));
+ $('#snAgain',v).addEventListener('click',()=>{ const pid=R.personaId; SENIOR=snNew(pid); render(); });
+ $('#snBack',v).addEventListener('click',()=>{ SENIOR=null; render(); });
+}
+function seniorPick(v){
+ v.innerHTML=`<div class="row" style="justify-content:space-between;margin-bottom:12px"><h1 style="margin:0">선배 시범 · 내가 고객</h1><button class="btn" id="snBack">돌아가기</button></div>
+ <p class="lead">이번엔 내가 고객이에요. 거절해 보세요. 선배가 어떻게 받아서 약속까지 가는지, 말마다 "왜"를 보여 줘요. 점수는 없어요.</p>
+ <div class="row" style="margin:6px 0 10px;justify-content:space-between"><h2 style="margin:0">어떤 고객이 될까요?</h2><button class="btn gold" id="snFree">자유롭게</button></div>
+ <div class="plist">${DB.personas.map(p=>`<button class="pc" data-sp="${p.id}"><div class="row"><b>${esc(p.name)}</b><span class="sub">${esc(p.age)} ${esc(p.gender)}</span><span class="chip">${esc(p.db)}</span></div><p class="sub" style="margin:6px 0 0">${esc(p.hidden||p.known)}</p></button>`).join('')}</div>`;
+ $$('[data-sp]',v).forEach(b=>b.addEventListener('click',()=>{ SENIOR=snNew(b.dataset.sp); render(); }));
+ $('#snFree',v).addEventListener('click',()=>{ SENIOR=snNew(''); render(); });
+ $('#snBack',v).addEventListener('click',()=>{ SENIOR=null; render(); });
+}
+
+/* ================= AI 선배 (3단계, 2026-11-20) =================
+   말을 알아듣고 상황에 맞는 말을 만드는 건 서버의 AI(supabase/functions/senior)가 해요.
+   위의 규칙 선배는 그대로 돌면서 통화 상태(단계·거절 횟수·고른 날짜)를 잡고, AI 답을 검사하는 안전장치가 돼요.
+   AI가 없거나(파일로 열기·로그인 전), 느리거나(10초), 검사에 걸리면 규칙 선배의 말이 그대로 나가요. */
+const SN_AI_WAIT=10000;
+function snAiOn(S){ if(S&&S.aiOff) return false; if(typeof window!=='undefined'&&window.__SN_AI) return true; if(SAMPLE) return true; return SN_SERVER_AI&&srvOn()&&SRV.state==='ok'&&!!SRV.ses; }
+/* 서버 AI(결제 필요)는 꺼 둬요(2026-11-22 대표 결정: 운영비 0원). Claude판에서는 쓰는 사람 본인의 Claude로 돌아요. */
+const SN_SERVER_AI=false;
+/* AI에게 주는 고정 지침. supabase/functions/senior/index.ts의 GUIDE와 같은 글이에요(둘 중 하나를 고치면 같이 고쳐요). */
+const SN_GUIDE="너는 보험 설계사 교육 앱의 \"선배 시범\"에서 선배 설계사 역할을 해. 연습하는 사람이 고객 역을 하고, 너는 CJ온스타일에서 넘어온 고객에게 처음 전화를 건 선배야. 목적은 후배가 \"거절을 이렇게 받는구나\"를 보고 배우는 것이야.\n\n[이 통화의 목적]\n만나서 보험을 점검할 약속을 잡는 것. 단, 고객이 원하지 않으면 정중히 끝내는 것도 좋은 통화야. 억지로 잡은 약속은 실패야.\n\n[먼저 고객 말을 제대로 알아들어]\n- 고객이 한 말이 동의인지, 거절인지, 질문인지, 망설임인지 먼저 판단해. \"괜찮아요\", \"아 괜찮습니다\", \"됐어요\", \"아뇨\"는 대부분 거절이야. \"월요일 괜찮아요\"처럼 날짜를 받아들이는 말만 동의야.\n- 애매하면 동의로 치지 마.\n\n[거절을 받는 원칙]\n- 첫 거절: 공감 한마디 → 무슨 전화인지 한 문장 → 부담을 낮추는 말(\"모든 분께 필요한 건 아니라서, 해당되시는지만 볼게요\") → 질문 하나. 첫 거절에 날짜부터 밀지 마.\n- 이유가 있는 거절은 그 이유에 맞게 받아: 바쁘다 → 다시 걸 시각만 정하고 끊기 / 시간이 없다·출장 → 날짜 문제로 바꾸기 / 담당자가 있다 → 깎아내리지 말고 관리 공백 묻기 / 방문이 싫다 → 처음엔 \"저 좋자고가 아니라\" 만나면 고객이 얻는 것(가입 내역을 화면으로 같이 보며 놓친 보험금을 바로 짚어 드림)을 한 문장으로 말하고 날짜 두 개로 한 번 더 물어, 두 번째로 싫다면 방문 없는 길(동의 링크 + 전화 설명) / 보험료 부담·해약 → 해약 전에 먼저 보기 / 혜택이 없다 → 불만이 곧 이유.\n- 방문이 싫다는 건 만나는 방식에 대한 말이라 \"필요 없다\" 거절 횟수에 세지 마.\n- 이유 없는 첫 거절(\"안 할게요\", \"괜찮아요\")도 한 번은 받아: \"모든 분께 필요한 건 아니라서 몇 가지만 확인하고, 해당 없으시면 말씀하신 대로 바로 끊을게요\" 하고 쉬지 말고 바로 질문 하나로 이어 가.\n- 두 번째 거절이거나, 다그치는 말투(\"~니까\", \"~다고요\"), \"전화하지 마세요\"면 바로 정중히 끝내. 거부한 뒤 계속 권하면 금소법상 부당권유야.\n- 고객이 질문하면 한 문장으로 바로 답하고 이어 가.\n\n[말하는 법]\n- 실제 전화처럼 존댓말, 짧게. 한 번에 1~3문장, 130자 이내. 혼자 15초 넘게 말하지 마.\n- 같은 말을 되풀이하지 말고, 고객이 방금 한 말을 받아서 이어 가.\n- 날짜는 앱이 준 두 개 중에서 고르게 해(\"A랑 B 중에 언제가 편하세요?\"). 다른 날짜를 만들지 마. \"언제가 편하세요?\"만 묻지 마.\n- 약속을 확정할 때는 고객이 분명히 고른 날짜·시각과 장소를 한 번에 복창해.\n- 숫자는 본보기의 [근거 숫자]에 있는 것만 써. 확실하지 않은 건 단정하지 마(\"무조건 이득\", \"크게 손해\" 금지).\n- 보험인 걸 숨기지 마(\"보험 때문은 아니고요\", \"판매 목적은 아니고요\" 금지). 다른 설계사를 깎아내리지 마. 해피콜 답을 코칭하지 마.\n- 첫마디에 \"통화 괜찮으세요?\", \"기억하세요?\"처럼 허락·기억을 묻지 마.\n- [금지 멘트]에 있는 말은 쓰지 마.\n\n[답하는 모양]\nJSON 하나로만 답해.\n- say: 선배가 지금 할 말\n- why: 후배에게 보여 줄 \"왜 이렇게 말했나\" 한 줄 (60자 안팎)\n- intent: 이 말로 하려는 것\n  continue(이어 가기) / propose_dates(날짜 두 개 제안) / confirm(고객이 고른 약속을 복창하며 확정) / end_polite(정중히 끝내기) / end_callback(다시 걸 시각을 정하고 끝내기)\nconfirm은 고객이 날짜를 분명히 골랐을 때만 써.";
+const SN_AI_WAIT_SAMPLE=45000; // Claude판: 처음 한 번은 허락 창을 기다려요
+let SN_KB_CACHE='';
+/* AI에게 주는 본보기. 매번 같은 글이라 서버에서 저장해 두고 다시 써요(싸요). */
+function snKB(){
+ if(SN_KB_CACHE) return SN_KB_CACHE; const pb=DB.playbook||{};
+ const flow=(pb.flow||[]).map(f=>`## ${f.n} ${f.title} (${f.sub})\n${f.body}`).join('\n\n');
+ const reacts=(pb.reacts||[]).map(r=>`- 고객: ${r.trigger}\n  선배: ${r.say}${r.note?`\n  (이유: ${r.note})`:''}`).join('\n');
+ const bans=(pb.banRules||[]).map(b=>`- ${b.label} → ${b.fix}`).join('\n');
+ const ev=(pb.evidence||[]).map(e=>`- ${e[0]} (${e[1]})`).join('\n');
+ const qs=SN_Q.map((q,i)=>`${i+1}. ${q.ask} → 모른다고 하면: ${q.then}`).join('\n');
+ SN_KB_CACHE=`[통화 흐름 7단계]\n${flow}\n\n[반응 카드: 이런 말엔 이렇게]\n${reacts}\n\n[해당 여부 질문 3개]\n${qs}\n\n[금지 멘트 → 바꿔 말하기]\n${bans}\n\n[근거 숫자: 숫자는 여기 있는 것만]\n${ev}\n\n[자기소개] 이름·회사가 필요하면 "{내회사} {내이름}"이라고 그대로 써. 앱이 채워 넣어.`;
+ return SN_KB_CACHE;
+}
+const SN_PHASE_KO={intro:'첫마디 직후',q:'해당 여부 질문 중',date:'날짜 두 개를 제안한 뒤',place:'날짜를 정하고 장소를 묻는 중',end:'통화가 끝나는 중'};
+/* 이번 턴 상황 메모. 고객 이름·속사정은 보내지 않아요(선배는 모르는 것). */
+function snAlt(S){ const k=['eve','wkd','day','am'][(S.slotTries||0)%4]; return snSlots(S.pref&&S.pref!==k?S.pref:k,(S.slotTries||0)*4+5); }
+function snBrief(S,rule){
+ const p=S.personaId?persona(S.personaId):null;
+ const slots=S.slots||snSlots(S.pref||'day'), alt=S.alt=snAlt(S);
+ const d=snNow();
+ return [`[이번 턴 상황]`,
+  `오늘: ${d.getMonth()+1}월 ${d.getDate()}일 ${SN_DAY[d.getDay()]}요일`,
+  `DB: ${S.db==='방송'?'방송 DB (고객이 방송을 보고 직접 방문상담을 신청함. 전화 올 걸 앎)':'퍼미션 DB (콜센터가 상담 동의만 받아 넘김. 전화 올 걸 잘 기억 못함, 관심 낮음)'}`,
+  p?`설계사가 아는 고객 정보: ${p.age} ${p.gender} · ${p.known}`:'설계사가 아는 고객 정보: 없음',
+  `지금 단계: ${SN_PHASE_KO[S.phase]||S.phase}`,
+  `지금까지 고객 거절: ${S.no||0}번${(S.obj||0)?` (이유 있는 거절 ${S.obj}번)`:''}`,
+  `방문이 싫다는 말: ${S.hits.visit?S.hits.visit+'번 (두 번째부터는 방문 없는 길)':'아직 없음'}${S.pend==='phone'?' · 지금은 방문 없이(전화 설명)로 가는 중':''}`,
+  `제안할 날짜 두 개(이것만 써): ${slots[0].say} / ${slots[1].say}  (복창할 땐 ${slots[0].full} / ${slots[1].full})`,
+  `고객이 위 두 날짜가 안 된다고 하면 쓸 다른 두 개: ${alt[0].say} / ${alt[1].say}  (복창할 땐 ${alt[0].full} / ${alt[1].full})`,
+  S.pick?`고객이 고른 때: ${S.pick.full}${S.place?` · 장소: ${S.place}`:''}`:'고객이 고른 때: 아직 없음',
+  S.cb?`다시 걸 시각(정했다면): ${S.cb.say}`:'',
+  `참고, 기본 엔진의 답: "${rule.text}"${S.outcome?` (기본 엔진은 여기서 통화를 "${S.outcome}"(으)로 끝내려 함)`:''}`,
+  `기본 엔진이 고객 말을 잘못 알아들었을 수 있어. 고객의 실제 말을 보고 판단해.`].filter(Boolean).join('\n');
+}
+/* AI 답 검사. 걸리면 {ok:false}. */
+function snGuard(S,r,pickNew){
+ if(!r||typeof r.say!=='string'||!r.say.trim()) return {ok:false,why:'빈 답'};
+ const say=fill(r.say).replace(/\s+/g,' ').trim(), intent=String(r.intent||'continue');
+ if(/[{}]/.test(say)) return {ok:false,why:'안 채운 칸'};
+ if(say.length>130) return {ok:false,why:'130자 넘음'};
+ if(banHits(say).length) return {ok:false,why:'금지 멘트'};
+ if(/언제(가|쯤)?\s*편하세요/.test(say)&&!/(랑|이랑|중에|중\s)/.test(say)) return {ok:false,why:'열린 날짜 질문'};
+ // 끝내기: 규칙이 거절로 끝냈으면 AI도 끝내야 하고, AI가 끝내는 건 언제든 괜찮아요(안전한 쪽)
+ if(S.outcome&&S.outcome!=='약속'&&!/^end_/.test(intent)) return {ok:false,why:'거절인데 이어 감'};
+ if(intent==='confirm'||S.outcome==='약속'){
+  if(S.outcome!=='약속'||!S.pick) return {ok:false,why:'고객이 안 고른 약속'};
+  if(intent!=='confirm'||!say.includes(`${S.pick.mo}월 ${S.pick.d}일`)) return {ok:false,why:'복창 없음'};
+ }
+ if(/^end_/.test(intent)&&S.outcome==='약속') return {ok:false,why:'약속인데 끝냄'};
+ // 이번 턴에 규칙이 날짜를 정했으면(고객이 골랐다고 봄) AI 말에도 그 날짜가 있어야 해요. 아니면 AI는 고객이 안 골랐다고 본 것이라 규칙 말을 써요
+ if(pickNew&&S.pick&&!say.includes(S.pick.say)&&!say.includes(`${S.pick.mo}월 ${S.pick.d}일`)) return {ok:false,why:'정한 날짜와 다름'};
+ // 날짜·숫자: 준 것만
+ const allowed=[...(S.slots||[]),...(S.alt||[]),S.pick,S.cb,...snSlots(S.pref||'day')].filter(Boolean).map(s=>s.say+' '+s.full).join(' ');
+ // 날과 시각을 한 덩어리로 봐요("수요일 오후 5시"는 수요일이 있어도 5시가 없으면 안 돼요)
+ const DT=/(\d+월\s*\d+일\s*)?((월|화|수|목|금|토|일)요일|오늘|내일|모레)(\s*(오전|오후|저녁|낮|밤|아침)?\s*\d{1,2}\s*시(\s*반)?)?|(오전|오후|저녁|낮|밤|아침)\s*\d{1,2}\s*시(\s*반)?|\d+월\s*\d+일/g;
+ for(const w of (say.match(DT)||[])) if(!allowed.includes(w.replace(/\s+/g,' ').trim())) return {ok:false,why:'준 적 없는 날짜: '+w};
+ const nums=snKB()+' '+allowed+' 1분 15초';
+ for(const n of (say.match(/\d+(?:[.,]\d+)?/g)||[])) if(!nums.includes(n)) return {ok:false,why:'근거 없는 숫자: '+n};
+ return {ok:true,say,why:fill(String(r.why||'')).trim(),intent};
+}
+async function snAsk(S,turns,rule){
+ const payload={turns:turns.map(t=>({who:t.who,text:t.text})),kb:snKB(),brief:snBrief(S,rule)};
+ if(typeof window!=='undefined'&&window.__SN_AI) return await window.__SN_AI(payload);
+ if(SAMPLE){
+  const talk=payload.turns.map(t=>(t.who==='sen'?'선배: ':'고객: ')+t.text).join('\n');
+  const prompt=[SN_GUIDE,payload.kb,payload.brief,'[지금까지 대화]\n'+talk,
+   '위 대화에 이어 선배가 할 다음 말을 정해. 다른 글 없이 JSON 하나로만 답해: {"say":"…","why":"…","intent":"continue|propose_dates|confirm|end_polite|end_callback"}'].join('\n\n');
+  try{ return await SAMPLE.json(prompt,{modelTier:'default',cache:false}); }
+  catch(e){ const c=e&&e.code; if(c==='not_granted'){ S.aiOff=true; toast('Claude 사용을 허락하지 않아서 기본 선배로 이어 가요.'); } else if(c==='rate_limited'){ S.aiOff=true; toast('내 Claude 사용량이 많아 잠시 기본 선배로 이어 가요.'); } throw e; }
+ }
+ if(!(await srvFresh())) throw new Error('login');
+ const res=await fetch(SRV.url+'/functions/v1/senior',{method:'POST',headers:{apikey:SRV.key,Authorization:'Bearer '+SRV.ses.at,'Content-Type':'application/json'},body:JSON.stringify(payload)});
+ if(res.status===429){ S.aiOff=true; toast('오늘 AI 선배 횟수를 다 썼어요. 기본 선배로 이어 가요.'); throw new Error('limit'); }
+ if(res.status===404||res.status===401||res.status===403){ S.aiOff=true; throw new Error('AI '+res.status); }
+ if(!res.ok) throw new Error('AI '+res.status);
+ return await res.json();
+}
+/* 한 턴: 규칙 선배가 먼저 답을 만들어 두고(상태도 갱신), AI 답이 검사를 통과하면 그 말로 바꿔요. */
+async function snTurn(S,text,redraw){
+ S.turns.push({who:'me',text});
+ const n0=S.turns.length, pick0=S.pick, snap={phase:S.phase,pick:S.pick,place:S.place,outcome:S.outcome,slots:S.slots}; snReply(S,text);
+ const rule=S.turns.length>n0?S.turns[S.turns.length-1]:null;
+ if(!rule||rule.who!=='sen'||!snAiOn(S)) return;
+ const hist=S.turns.slice(0,-1);
+ rule.pending=true; S.busy=true; if(redraw) redraw();
+ try{
+  const r=await Promise.race([snAsk(S,hist,rule),new Promise((_,no)=>setTimeout(()=>no(new Error('timeout')),SAMPLE&&!(typeof window!=='undefined'&&window.__SN_AI)?SN_AI_WAIT_SAMPLE:SN_AI_WAIT))]);
+  let g=snGuard(S,r,S.pick!==pick0);
+  // 규칙은 "고객이 날짜를 골랐다"고 읽었는데 AI는 아니라고 보면, 약속을 안 잡는 쪽(AI)을 믿고 날짜를 되돌려요
+  if(!g.ok&&g.why==='정한 날짜와 다름'&&r&&r.intent!=='confirm'){ const post={phase:S.phase,pick:S.pick,place:S.place,outcome:S.outcome,slots:S.slots}; Object.assign(S,snap); g=snGuard(S,r,false); if(!g.ok) Object.assign(S,post); }
+  if(g.ok&&S.alt&&g.say.includes(S.alt[0].say)&&g.say.includes(S.alt[1].say)){ S.slots=S.alt; S.phase='date'; S.slotTries=(S.slotTries||0)+1; }
+  if(g.ok){ rule.ruleText=rule.text; rule.text=g.say; rule.why=g.why||rule.why; rule.ai=true; S.aiFail=0;
+   if(g.intent==='end_polite'&&!S.outcome){ rule.tags=[...(rule.tags||[]),'bye']; snEnd(S,'종료'); }
+   if(g.intent==='end_callback'&&!S.outcome){ rule.tags=[...(rule.tags||[]),'busy']; snEnd(S,'다시 전화'); } }
+  else { rule.aiReject=g.why; }
+ }catch(e){ S.aiFail=(S.aiFail||0)+1; if(S.aiFail>=2) S.aiOff=true; }
+ finally{ rule.pending=false; S.busy=false; }
+}
+
+/* ================= 연습 기록 모으기 (Claude판, 2026-11-22) =================
+   연습 대화(선배 시범·통화 연습)를 Artifact 저장소의 practice/<사람>/runs/<기록>에 올려요.
+   개인 기록(통화 기록·고객 이름)이 있는 data/users/<사람>은 그대로 본인만 봐요. practice는 본인이 쓰고 주인(과 Claude)이 읽어요.
+   연습이라 실제 고객 정보는 없지만, 혹시 쳤을 수 있는 전화번호·주민번호는 가려서 올려요. 사이트판은 아직 안 모아요(다음 단계). */
+let PRAC_DB=null;
+async function pracDb(){
+ if(PRAC_DB!==null) return PRAC_DB;
+ if(!(window.claude&&typeof window.claude.use==='function')) return PRAC_DB=false;
+ try{ const [db,user]=await Promise.all([window.claude.use('db'),window.claude.use('user')]); const id=db&&user?await user.id():null; PRAC_DB=id?{db,id}:false; }catch(e){ PRAC_DB=false; }
+ return PRAC_DB;
+}
+function pracMask(t){ return maskText(String(t||''),[]).slice(0,600); }
+async function pracLog(kind,rec,turns){
+ try{
+  const p=await pracDb(); if(!p||!rec||!rec.id) return;
+  const row={kind,at:rec.startedAt||'',savedAt:new Date().toISOString(),app:typeof APP_VER!=='undefined'?APP_VER:'',db:rec.db||'',personaId:rec.personaId||'',level:rec.level||'',
+   outcome:rec.outcome||'',score:typeof rec.score==='number'?rec.score:null,ai:(turns||[]).filter(t=>t.ai).length,skills:rec.skills||[],moved:typeof rec.moved==='number'?rec.moved:null,movedText:rec.movedText?pracMask(rec.movedText):'',
+   turns:(turns||[]).filter(t=>t&&t.text).map(t=>{ const o={who:t.who,text:pracMask(t.text)}; if(t.ai) o.ai=true; if(t.ruleText) o.rule=pracMask(t.ruleText); if(t.aiReject) o.reject=String(t.aiReject); if(t.why) o.why=String(t.why).slice(0,200); return o; })};
+  await p.db.doc('practice/'+p.id+'/runs/'+rec.id).set(row);
+ }catch(e){ /* 못 올려도 연습은 그대로 */ }
+}
 function buildSeed(){
  const pb=JSON.parse(JSON.stringify(SEED_PART.playbook));
  pb.banRules=BAN_RULES; pb.cardRules=CARD_RULES; pb.evidence=EVIDENCE; pb.iq=IQ; pb.psy=PSY;
@@ -3139,7 +3604,7 @@ function render_v0(){
  <nav class="nav" aria-label="메뉴"><div class="in">${tabs.map(([id,n])=>`<button data-tab="${id}" ${(VIEW===id||(VIEW==='admin'&&id==='settings'))?'aria-current="page"':''}>${n}</button>`).join('')}</div></nav></header>
  <main class="wrap" id="view"></main>`;
  $$('.nav button').forEach(b=>b.addEventListener('click',()=>{ VIEW=b.dataset.tab; render(); }));
- $('#logout').addEventListener('click',()=>{ ss('cai.me',null); lsMe(null); DB.meId=null; save(); ME=null; PRACTICE=null; render(); });
+ $('#logout').addEventListener('click',()=>{ ss('cai.me',null); lsMe(null); DB.meId=null; save(); ME=null; PRACTICE=null; SENIOR=null; render(); });
  cloudBadge();
  $('#help').addEventListener('click',helpModal);
  const v=$('#view');
@@ -3214,18 +3679,21 @@ function homeView_v1(v){
 function practiceView(v){
  if(PRACTICE&&PRACTICE.done) return practiceResult(v);
  if(PRACTICE) return practiceChat(v);
+ if(SENIOR&&(SENIOR.choosing||SENIOR.done||SENIOR.userId===ME.id)) return seniorView(v);
  const st=levelStatus(ME.id);
  const cards=[...LEVELS.map(l=>({id:l.id,name:l.name,desc:l.desc,locked:!st.unlocked[l.id],info:`최근 5회 중 합격 ${st[l.id].passes}번`})),{id:'voice',name:'음성',desc:'AI 고객이 전화처럼 말하고, 내 말은 마이크로 받아요. 상급 고객으로 3번 합격하면 통과.',locked:!st.unlocked.voice,info:st.unlocked.voice?'크롬 권장':'상급 통과 후 열려요'}];
  const lvSel=PSTATE.mode==='voice'?'L3':PSTATE.level;
  const list=DB.personas.filter(p=>PSTATE.mode==='voice'?true:p.level===PSTATE.level);
  v.innerHTML=`<h1>통화 연습</h1><p class="lead">단계를 고르고 고객을 고르면 바로 통화가 시작돼요. 고객은 실제처럼 반응해요. 소개만 하면 무슨 일인지 묻고, 물으면 대답하고, 되는 시간이 따로 있어요. 소개 → 용건 → 질문 → 날짜 순서로 가 보세요.</p>
  <div class="levels">${cards.map(c=>`<button class="lv" data-lv="${c.id}" aria-pressed="${(PSTATE.mode==='voice'?c.id==='voice':c.id===PSTATE.level)}" ${c.locked?'disabled':''}><b>${c.name}</b> ${c.locked?'<span class="chip lock">잠김</span>':''}<p class="sub" style="margin:6px 0 0">${esc(c.desc)}</p><p class="k" style="margin:6px 0 0">${esc(c.info)}</p></button>`).join('')}</div>
+ <div class="card sn-cta"><div><b>내가 고객 · 선배 시범</b><p class="sub">거꾸로 해 봐요. 내가 거절하는 고객이 되고, 선배가 받아서 약속까지 가요. 말마다 "왜"가 붙어요. 점수 없음.</p></div><button class="btn" id="senior">선배 시범 보기</button></div>
  <div class="row" style="margin:18px 0 10px;justify-content:space-between"><h2 style="margin:0">${PSTATE.mode==='voice'?'음성 연습 고객':esc(lvName(PSTATE.level))+' 고객'} <span class="sub">${list.length}명</span></h2><button class="btn gold" id="rand">아무 고객이나</button></div>
  <div class="plist">${list.map(p=>`<button class="pc" data-p="${p.id}"><div class="row"><b>${esc(p.name)}</b><span class="sub">${esc(p.age)} ${esc(p.gender)}</span><span class="chip">${esc(p.db)}</span>${PSTATE.mode==='voice'?`<span class="chip hold">${esc(lvName(p.level))}</span>`:''}</div><p class="sub" style="margin:6px 0 0">${esc(p.known)}</p><p class="k" style="margin:4px 0 0">바탕 케이스: ${esc(p.source)}</p></button>`).join('')||'<p class="empty">이 단계 고객이 없어요. 관리자가 추가할 수 있어요.</p>'}</div>
  <p class="sub" style="margin-top:14px">고객 반응: <b>${aiOn()?'AI 고객 (내 클로드)':'규칙 엔진 (AI 없이)'}</b> · 설정에서 바꿀 수 있어요.</p>`;
  $$('.lv',v).forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.lv==='voice'){PSTATE.mode='voice';} else {PSTATE.mode='chat'; PSTATE.level=b.dataset.lv;} practiceView(v); }));
  $$('.pc',v).forEach(b=>b.addEventListener('click',()=>startPractice(b.dataset.p)));
  $('#rand',v).addEventListener('click',()=>{ if(!list.length) return; startPractice(list[Math.floor(Math.random()*list.length)].id); });
+ $('#senior',v).addEventListener('click',()=>{ SENIOR={choosing:true}; practiceView(v); });
 }
 function startPractice_v0(pid){
  const p=persona(pid);
@@ -3278,7 +3746,7 @@ async function finishPractice(){
  const sc=scoreTurns(meTexts,{handled:Math.min(s.state.handled,p.objections.length),need:Math.min(lv.need,p.objections.length),outcome,acceptOnKeys:p.acceptOnKeys});
  Object.assign(s,{outcome,score:sc.total,items:sc.items,banHits:sc.banHits,tips:sc.tips,pass:sc.total>=80&&outcome==='약속',done:true});
  const rec={id:s.id,userId:s.userId,personaId:s.personaId,level:s.level,mode:s.mode,startedAt:s.startedAt,turns:s.turns,outcome:s.outcome,score:s.score,pass:s.pass,banHits:s.banHits,items:s.items,tips:s.tips};
- DB.sessions.push(rec); save(); render();
+ DB.sessions.push(rec); save(); render(); pracLog('practice',rec,s.turns);
  if(aiOn()){
   try{ const tr=s.turns.map(t=>(t.who==='me'?'설계사: ':'고객: ')+t.text).join('\n'); const ai=await aiGrade(tr,sc,'practice'); s.ai=ai; rec.ai=ai; save(); if(VIEW==='practice') render(); }
   catch(e){ toast('AI 코멘트를 못 받았어요: '+e.message); }
