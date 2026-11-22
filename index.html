@@ -3989,7 +3989,7 @@ function settingsView(v){
  <div class="card"><h2>관리</h2><p class="sub">다른 사람이 보낸 기록 합치기, 확인이 필요한 기록 보기, 전체 백업이 있어요.</p><div class="row" style="margin-top:8px"><button class="btn" data-goto="admin">관리 열기</button></div></div>
  <div class="card"><h2>음성</h2><p class="sub">음성 인식: ${sr?'<span class="chip ok">지원</span>':'<span class="chip no">미지원 (크롬 권장)</span>'} · 한국어 목소리 ${voices.length}개</p>
  <div class="field"><label class="f" for="vName">고객 목소리</label><select class="t" id="vName"><option value="">기본</option>${voices.map(x=>`<option ${s.voice===x.name?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
- <div class="field"><label class="f" for="vRate">말 빠르기 ${s.rate}</label><input id="vRate" type="range" min="0.7" max="1.4" step="0.1" value="${s.rate}" style="width:100%"></div>
+ <div class="field"><label class="f" for="vRate">말 빠르기 <b id="vRateV">${(+s.rate||1).toFixed(1)}배</b></label><input id="vRate" type="range" min="0.8" max="3" step="0.1" value="${s.rate||1}" style="width:100%"><p class="sub" style="margin:2px 0 0">0.8배 ~ 3배. 실제 고객처럼 빠르게 들으려면 1.5배 이상. 목소리에 따라 너무 빠르면 더 안 빨라질 수 있어요.</p></div>
  <div class="row"><button class="btn" id="vTest">목소리 들어보기</button></div>
  <p class="sub">음성 연습은 마이크를 써요. 클로드 화면 안에서는 마이크가 막혀 있을 수 있어요.</p>
  <h2 style="margin-top:14px">내 정보</h2><div class="field"><label class="f" for="myPhone">내 번호 (카톡 템플릿에 들어가요)</label><input class="t" id="myPhone" value="${esc(ME.phone||'')}" placeholder="010-0000-0000"></div>
@@ -3999,7 +3999,8 @@ function settingsView(v){
  $('#aiClear',v).addEventListener('click',()=>{ ss('cai.key',null); toast('키를 지웠어요'); settingsView(v); });
  $('#aiTest',v).addEventListener('click',async()=>{ const k=$('#aiKey').value.trim(); if(k) ss('cai.key',k); s.model=$('#aiModel').value; try{ const t=await callClaude('한 단어로만 답해.',[{role:'user',content:'연결 확인. "성공"이라고만 답해.'}],10); toast('연결됨: '+t); }catch(e){ toast(e.message); } });
  $('#vTest',v).addEventListener('click',()=>{ s.voice=$('#vName').value; s.rate=+$('#vRate').value; speak('네 여보세요? 누구세요?'); });
- $('#vRate',v).addEventListener('input',e=>{ s.rate=+e.target.value; save(); });
+ $('#vRate',v).addEventListener('input',e=>{ s.rate=+e.target.value; $('#vRateV',v).textContent=s.rate.toFixed(1)+'배'; save(); });
+ $('#vRate',v).addEventListener('change',()=>speak('네 여보세요? 누구세요?'));
  $('#vName',v).addEventListener('change',e=>{ s.voice=e.target.value; save(); });
  $('#meSave',v).addEventListener('click',()=>{ ME.phone=$('#myPhone').value.trim(); ME.company=$('#myCo').value.trim(); save(); toast('저장했어요'); });
  $('#theme',v).addEventListener('click',()=>{ const r=document.documentElement; const cur=r.getAttribute('data-theme'); const dark=cur?cur==='dark':matchMedia('(prefers-color-scheme: dark)').matches; r.setAttribute('data-theme',dark?'light':'dark'); });
