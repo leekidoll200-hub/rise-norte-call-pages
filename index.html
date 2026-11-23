@@ -2178,7 +2178,7 @@ document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closes
  if(d.fxr!=null){ fxReject(+d.fxr); return; }
  if(t.hasAttribute('data-mine')){ PBTAB='mine'; VIEW='playbook'; render(); window.scrollTo(0,0); return; }
 });
-function liveSetupView(v){ liveSetupView_v8(v); const n=Object.keys((((DB.scr||{})[ME.id]||{}).cur)||{}).length; const lead=v.querySelector('.lead'); if(lead){ const p=document.createElement('p'); p.className='sub'; p.style.margin='-12px 0 20px'; p.innerHTML=`${n?`내 말투로 바꾼 줄 ${n}개가 대본에 들어가 있어요.`:'대본을 내 말투로 바꾸고 싶으면'} <button type="button" class="lnk" data-mine>내 대본 고치기</button>`; lead.after(p); } }
+function liveSetupView(v){ liveSetupView_v8(v); const n=Object.keys((((DB.scr||{})[ME.id]||{}).cur)||{}).length; const lead=v.querySelector('.lead'); if(lead){ const p=document.createElement('p'); p.className='sub'; p.style.margin='-12px 0 20px'; p.innerHTML=`${n?`내 말투로 바꾼 줄 ${n}개가 대본에 들어가 있어요.`:'대본을 내 말투로 바꾸고 싶으면'} <button type="button" class="lnk" data-mine>내 대본 고치기</button>`; lead.after(p); const f=document.createElement('p'); f.style.margin='0 0 18px'; f.innerHTML='<button type="button" class="btn sm" data-fullscript>예시 대본 전체 보기</button> <span class="sub">인사부터 약속까지 한 번에 읽어 볼 수 있어요.</span>'; p.after(f); } }
 /* ---------- 내보내기 · 합치기 ---------- */
 function mineExport(){ if(!ME) return null; const mk=s=>maskText(String(s||''),[]); const S=(DB.scr||{})[ME.id]||{v:0,cur:{},hist:[]};
  return {scr:{v:S.v||0,cur:Object.fromEntries(Object.entries(S.cur||{}).map(([k,t])=>[k,mk(t)])),hist:(S.hist||[]).map(h=>Object.assign({},h,{from:mk(h.from),to:mk(h.to),why:mk(h.why)}))},
@@ -3388,6 +3388,49 @@ async function pracLog(kind,rec,turns){
   await p.db.doc('practice/'+p.id+'/runs/'+rec.id).set(row);
  }catch(e){ /* 못 올려도 연습은 그대로 */ }
 }
+/* ================= 예시 대본 전체 보기 (2026-11-23) =================
+   인사부터 클로징까지 내가 할 말을 순서대로 한 화면에 보여 줘요. 통화 중이 아니어도 볼 수 있어요.
+   내 말투로 고친 줄이 있으면 그걸로 보여요. 고객 이름은 들어가지 않아요. */
+let FS={db:'퍼미션',seg:''};
+function fsParts(db,seg){
+ const isP=db==='퍼미션', sc=isP?SCRIPT_P:SCRIPT_T, pre=isP?'p':'t', ds=dateSug(db);
+ const line=t=>fill(stripB(t)).replace(/\[A\]/g,ds[0]).replace(/\[B\]/g,ds[1]);
+ const m=(key,orig)=>line(my(key,stripB(orig)));
+ const qids=isP?qidsFor(seg):[];
+ return sc.map((s,i)=>{ let say=[];
+  if(s.kind==='q') qids.forEach((id,qi)=>{ const q=IQ.find(x=>x.id===id); if(!q) return; say.push({q:q.title,t:(qi===0?'':(qi===1?'두 번째요. ':'마지막이요. '))+m(`q.${id}.ask`,q.ask)}); say.push({cust:'모르겠는데요'}); say.push({t:m(`q.${id}.then`,q.then)}); });
+  else if(s.kind==='verdict') say=[{t:'말씀드린 것 중에 [몇] 개가 처음 들으신 거네요. 그럼 확인해 보셔야 하는 분이에요.'},{t:m('p.v1',ML_V1)},{t:m('p.v2',ML_V2)}];
+  else if(s.kind==='close') say=[{t:m('p.c1',ML_C1)},{t:m('p.c2',ML_C2)},{t:m('p.c3',ML_C3)}];
+  else if(s.kind==='dates') say=[{t:m('t.d1',ML_C1)}];
+  else say=(s.say||[]).map((x,j)=>({t:m(`${pre}${i}.${j}`,x)}));
+  const br=(s.br||[]).map(id=>{ const b=brOf(id); return b?{label:b.label,say:line(my('br.'+id,b.say)),note:b.note||''}:null; }).filter(Boolean);
+  return {t:s.t,say,br}; });
+}
+function fsText(db,seg){
+ return [`[콜 올인원 예시 대본 · ${db}${db==='퍼미션'&&seg?' · '+seg:''}]`].concat(fsParts(db,seg).map((s,i)=>[`\n${i+1}. ${s.t}`].concat(s.say.map(x=>x.cust?`  (고객: ${x.cust})`:`  나: ${x.t}`),s.br.length?['  - 고객이 이렇게 말하면']:[],s.br.map(b=>`    · "${b.label}" → ${b.say}`)).join('\n'))).join('\n');
+}
+function fsHTML(){
+ const segs=[['','나이 모름'],['20-30','20·30대'],['40-50','40·50대'],['60+','60대 이상']];
+ const parts=fsParts(FS.db,FS.seg);
+ return `<h2 id="fsTitle">예시 대본 전체</h2><p class="sub" style="margin:4px 0 12px">인사부터 약속까지 내가 할 말이 순서대로 있어요. 파란 줄이 내 말이에요.</p>
+ <div class="row" style="gap:6px;margin-bottom:8px">${['퍼미션','방송'].map(d=>`<button type="button" class="pill" data-fsdb="${d}" aria-pressed="${FS.db===d}">${d} 대본</button>`).join('')}</div>
+ ${FS.db==='퍼미션'?`<div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">${segs.map(([v,n])=>`<button type="button" class="pill" data-fsseg="${v}" aria-pressed="${FS.seg===v}">${n}</button>`).join('')}</div>`:''}
+ <div id="fsBody">${parts.map((s,i)=>`<section style="margin-top:18px"><h3 style="margin:0 0 8px;font-size:15px">${i+1}. ${esc(s.t)}</h3>
+  ${s.say.map(x=>x.cust?`<p class="sub" style="margin:6px 0 6px 14px">고객: ${esc(x.cust)}</p>`:`${x.q?`<p class="sub" style="margin:10px 0 4px"><b>질문 · ${esc(x.q)}</b></p>`:''}<p class="lsay" style="font-size:16px;margin-bottom:8px;overflow-wrap:anywhere">${esc(x.t)}</p>`).join('')}
+  ${s.br.length?`<details style="margin-top:6px"><summary class="sub" style="cursor:pointer">고객이 이렇게 말하면 (${s.br.length})</summary>${s.br.map(b=>`<div style="margin:8px 0 0 4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px"><div class="sub"><b>고객: ${esc(b.label)}</b></div><div style="margin-top:4px;overflow-wrap:anywhere">${esc(b.say)}</div>${b.note?`<div class="sub" style="margin-top:4px">${esc(b.note)}</div>`:''}</div>`).join('')}</details>`:''}</section>`).join('')}</div>
+ <div class="row end" style="margin-top:18px;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" id="fsOpen">대응 모두 펼치기</button><button type="button" class="btn sm" id="fsCopy">글로 복사</button><button type="button" class="btn pri sm" id="fsClose">닫기</button></div>`;
+}
+function fullScriptOpen(db,seg){
+ if(db) FS.db=db; if(seg!=null) FS.seg=seg;
+ openModal(fsHTML()); const b=$('#modalBox');
+ $$('[data-fsdb]',b).forEach(x=>x.addEventListener('click',()=>fullScriptOpen(x.dataset.fsdb)));
+ $$('[data-fsseg]',b).forEach(x=>x.addEventListener('click',()=>fullScriptOpen(null,x.dataset.fsseg)));
+ $('#fsOpen',b).addEventListener('click',()=>{ const all=$$('details',b); const open=all.some(d=>!d.open); all.forEach(d=>{ d.open=open; }); $('#fsOpen',b).textContent=open?'대응 모두 접기':'대응 모두 펼치기'; });
+ $('#fsCopy',b).addEventListener('click',()=>copy(fsText(FS.db,FS.seg)));
+ $('#fsClose',b).addEventListener('click',closeModal);
+}
+/* 어느 화면에서든 data-fullscript가 붙은 버튼을 누르면 열려요 */
+document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closest('[data-fullscript]'); if(!t||!ME) return; e.preventDefault(); fullScriptOpen((typeof LIVE_SETUP!=='undefined'&&LIVE_SETUP.db)||'퍼미션',(typeof LIVE_SETUP!=='undefined'&&LIVE_SETUP.seg)||''); });
 function buildSeed(){
  const pb=JSON.parse(JSON.stringify(SEED_PART.playbook));
  pb.banRules=BAN_RULES; pb.cardRules=CARD_RULES; pb.evidence=EVIDENCE; pb.iq=IQ; pb.psy=PSY;
