@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-caitheme="light">
 <head>
 <meta name="robots" content="noindex,nofollow">
 <style>@font-face{font-family:"Pretendard";font-weight:400;font-style:normal;font-display:swap;src:url("fonts/Pretendard-Regular.woff2") format("woff2")}@font-face{font-family:"Pretendard";font-weight:500;font-style:normal;font-display:swap;src:url("fonts/Pretendard-Medium.woff2") format("woff2")}@font-face{font-family:"Pretendard";font-weight:600;font-style:normal;font-display:swap;src:url("fonts/Pretendard-SemiBold.woff2") format("woff2")}@font-face{font-family:"Pretendard";font-weight:700 900;font-style:normal;font-display:swap;src:url("fonts/Pretendard-Bold.woff2") format("woff2")}</style>
@@ -38,8 +38,8 @@
 -->
 <style>
 :root{--bg:#f5f6f9;--card:#ffffff;--ink:#14203a;--muted:#5d6678;--line:#e2e5eb;--navy:#1a2744;--navy2:#26365c;--gold:#b8892e;--goldsoft:#f6eedb;--red:#c0392b;--redsoft:#fbe9e7;--green:#1f7a4d;--greensoft:#e5f2ea;--blue:#2f5fb3;--bluesoft:#e8eefa;--focus:#b8892e}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1523;--card:#171f31;--ink:#e7ebf3;--muted:#9ba5b9;--line:#2a3450;--navy:#0b1120;--navy2:#22304e;--gold:#d8ad55;--goldsoft:#2b2617;--red:#ef6c5e;--redsoft:#3a1f1c;--green:#56b884;--greensoft:#17301f;--blue:#7aa2ec;--bluesoft:#1b2840}}
-:root[data-theme=dark]{--bg:#0f1523;--card:#171f31;--ink:#e7ebf3;--muted:#9ba5b9;--line:#2a3450;--navy:#0b1120;--navy2:#22304e;--gold:#d8ad55;--goldsoft:#2b2617;--red:#ef6c5e;--redsoft:#3a1f1c;--green:#56b884;--greensoft:#17301f;--blue:#7aa2ec;--bluesoft:#1b2840}
+@media (prefers-color-scheme:dark){:root:not([data-caitheme=light]){--bg:#0f1523;--card:#171f31;--ink:#e7ebf3;--muted:#9ba5b9;--line:#2a3450;--navy:#0b1120;--navy2:#22304e;--gold:#d8ad55;--goldsoft:#2b2617;--red:#ef6c5e;--redsoft:#3a1f1c;--green:#56b884;--greensoft:#17301f;--blue:#7aa2ec;--bluesoft:#1b2840}}
+:root[data-caitheme=dark]{--bg:#0f1523;--card:#171f31;--ink:#e7ebf3;--muted:#9ba5b9;--line:#2a3450;--navy:#0b1120;--navy2:#22304e;--gold:#d8ad55;--goldsoft:#2b2617;--red:#ef6c5e;--redsoft:#3a1f1c;--green:#56b884;--greensoft:#17301f;--blue:#7aa2ec;--bluesoft:#1b2840}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font-family:"Pretendard","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;font-size:15px;line-height:1.55;word-break:keep-all;overflow-wrap:anywhere}
@@ -219,8 +219,8 @@ ol.help{padding-left:20px} ol.help li+li{margin-top:8px}
 
 /* ===== v0.7 디자인: 문서형 · 블루 톤 · 8px 그리드 ===== */
 :root{--bg:#f3f5f8;--card:#ffffff;--ink:#0e1b2c;--muted:#5a6577;--line:#dde3eb;--line2:#c8d1dd;--navy:#0e2747;--navy2:#163a63;--blue:#1d5bbf;--bluesoft:#eaf1fb;--gold:#1d5bbf;--goldsoft:#e9f0fb;--focus:#1d5bbf;--onblue:#ffffff;--r:8px}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1420;--card:#141d2b;--ink:#e6ebf2;--muted:#98a3b5;--line:#263246;--line2:#33425b;--navy:#0a1626;--navy2:#13253d;--blue:#86b0f2;--bluesoft:#172741;--gold:#86b0f2;--goldsoft:#172741;--focus:#86b0f2;--onblue:#0b1626}}
-:root[data-theme=dark]{--bg:#0d1420;--card:#141d2b;--ink:#e6ebf2;--muted:#98a3b5;--line:#263246;--line2:#33425b;--navy:#0a1626;--navy2:#13253d;--blue:#86b0f2;--bluesoft:#172741;--gold:#86b0f2;--goldsoft:#172741;--focus:#86b0f2;--onblue:#0b1626}
+@media (prefers-color-scheme:dark){:root:not([data-caitheme=light]){--bg:#0d1420;--card:#141d2b;--ink:#e6ebf2;--muted:#98a3b5;--line:#263246;--line2:#33425b;--navy:#0a1626;--navy2:#13253d;--blue:#86b0f2;--bluesoft:#172741;--gold:#86b0f2;--goldsoft:#172741;--focus:#86b0f2;--onblue:#0b1626}}
+:root[data-caitheme=dark]{--bg:#0d1420;--card:#141d2b;--ink:#e6ebf2;--muted:#98a3b5;--line:#263246;--line2:#33425b;--navy:#0a1626;--navy2:#13253d;--blue:#86b0f2;--bluesoft:#172741;--gold:#86b0f2;--goldsoft:#172741;--focus:#86b0f2;--onblue:#0b1626}
 body{font-size:15px;line-height:1.6;letter-spacing:-.003em}
 /* 상단 */
 .top{background:var(--card);color:var(--ink);border-bottom:1px solid var(--line)}
@@ -329,8 +329,8 @@ h2 .no{display:inline-grid;place-items:center;width:22px;height:22px;border-radi
 .kmempty{border-style:dashed}
 textarea.sms{font-family:inherit;font-size:15px;line-height:1.65;white-space:pre-wrap;background:var(--bg)}
 .warn{background:#fff6e2;color:#5c4210;border:1px solid #efd59c;border-radius:6px;padding:10px 12px;font-size:13px;line-height:1.55;margin-top:10px}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .warn{background:#2c2312;color:#f1dcae;border-color:#5a4720}}
-:root[data-theme=dark] .warn{background:#2c2312;color:#f1dcae;border-color:#5a4720}
+@media (prefers-color-scheme:dark){:root:not([data-caitheme=light]) .warn{background:#2c2312;color:#f1dcae;border-color:#5a4720}}
+:root[data-caitheme=dark] .warn{background:#2c2312;color:#f1dcae;border-color:#5a4720}
 .cprev{background:var(--bluesoft);border-radius:8px;padding:16px;display:flex;justify-content:center}
 .cprev canvas{width:100%;max-width:380px;height:auto;display:block;border-radius:6px;background:#fff;box-shadow:0 1px 2px rgba(14,39,71,.10),0 8px 24px rgba(14,39,71,.08)}
 .kmedit{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
@@ -401,8 +401,8 @@ ol.rules li{margin-bottom:8px;line-height:1.6}
 :root{--bg:#f4f8ff;--card:#ffffff;--ink:#0a1628;--muted:#4a5a78;--line:#e6eef7;--line2:#cfdbea;--navy:#0a1628;--navy2:#16294a;
  --blue:#0396ff;--bluetx:#0274d1;--bluesoft:#e9f5ff;--gold:#0396ff;--goldsoft:#e9f5ff;--focus:#0396ff;--onblue:#ffffff;--r:16px;
  --grad:linear-gradient(135deg,#0396ff 0%,#22bdf2 100%);--shadow:0 6px 24px rgba(3,150,255,.07)}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--blue:#2aa3ff;--bluetx:#6cc0ff;--gold:#2aa3ff;--focus:#6cc0ff;--onblue:#04111f;--grad:linear-gradient(135deg,#2aa3ff 0%,#4fd0f7 100%);--shadow:none}}
-:root[data-theme=dark]{--blue:#2aa3ff;--bluetx:#6cc0ff;--gold:#2aa3ff;--focus:#6cc0ff;--onblue:#04111f;--grad:linear-gradient(135deg,#2aa3ff 0%,#4fd0f7 100%);--shadow:none}
+@media (prefers-color-scheme:dark){:root:not([data-caitheme=light]){--blue:#2aa3ff;--bluetx:#6cc0ff;--gold:#2aa3ff;--focus:#6cc0ff;--onblue:#04111f;--grad:linear-gradient(135deg,#2aa3ff 0%,#4fd0f7 100%);--shadow:none}}
+:root[data-caitheme=dark]{--blue:#2aa3ff;--bluetx:#6cc0ff;--gold:#2aa3ff;--focus:#6cc0ff;--onblue:#04111f;--grad:linear-gradient(135deg,#2aa3ff 0%,#4fd0f7 100%);--shadow:none}
 
 body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;letter-spacing:-.01em}
 
@@ -4053,8 +4053,8 @@ function toggleListen_v0(btn){
 if('speechSynthesis' in window){ try{ speechSynthesis.onvoiceschanged=()=>{ if(VIEW==='settings'&&ME) render(); }; }catch(e){} }
 
 /* ================= 시작 ================= */
-/* 기기가 어두운 화면 설정이어도 밝은 화면으로 보여요 (2026-11-19 디자인: 흰 바탕 · 하늘색). 어두운 화면용 색은 CSS에 남아 있어요. */
-document.documentElement.dataset.theme='light';
+/* 기기가 어두운 화면 설정이어도 밝은 화면으로 보여요 (2026-11-19 디자인: 흰 바탕 · 하늘색). 어두운 화면용 색은 CSS에 남아 있어요. Claude 화면이 data-theme을 어둡게 바꿔도 안 따라가게 이름을 따로 써요(2026-11-23). */
+document.documentElement.dataset.caitheme='light';
 DB=load();
 (function(){ const id=lsMe()||ss('cai.me')||DB.meId; if(id){ const u=userById(id); if(u&&!isEx(u)) ME=u; } })();
 render();
