@@ -4072,15 +4072,18 @@ function approve(id,ok){
 }
 
 /* ---- 설정 ---- */
+/* API 키로 직접 연결하는 칸은 배포판에서 뺐어요 (2026-11-23 대표 결정, 단장님 피드백 9번: 키가 브라우저에 남고 한도가 없음).
+   다시 켜려면 true로. 사이트판에 AI를 붙일 때는 이 칸 대신 서버를 거치게 해요. */
+const AI_KEY_UI=false;
 function settingsView(v){
  const s=DB.settings; const hasKey=!!ss('cai.key');
  const voices=('speechSynthesis' in window)?speechSynthesis.getVoices().filter(x=>/ko/i.test(x.lang)):[];
  const sr=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
  v.innerHTML=`<h1>설정</h1><div class="grid g2"><div class="card"><h2>AI 연결</h2>
- <div class="field"><label class="f" for="aiMode">고객 반응·피드백 엔진</label><select class="t" id="aiMode"><option value="mine" ${(s.aiMode==='mine'||(!s.aiPicked&&s.aiMode==='demo'))?'selected':''}>내 클로드 (권장 · 키 필요 없음)</option><option value="demo" ${(s.aiPicked&&s.aiMode==='demo')?'selected':''}>규칙 엔진 (AI 없이)</option><option value="claude" ${s.aiMode==='claude'?'selected':''}>Claude API 키 (개발용)</option></select></div>
- <p class="sub" style="margin:0 0 8px">${SAMPLE?'내 클로드에 올린 앱이라 키 없이 AI를 써요.':'내 클로드에 올린 앱에서 열면 키 없이 AI를 써요.'}</p><details><summary class="sub" style="cursor:pointer;margin-bottom:8px">개발용: API 키로 연결</summary><div class="field"><label class="f" for="aiKey">API 키 <span class="sub">${hasKey?'(이 탭에 들어 있어요)':''}</span></label><input class="t" id="aiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></div>
- <div class="field"><label class="f" for="aiModel">모델</label><select class="t" id="aiModel">${['claude-sonnet-5-5','claude-opus-5-5','claude-haiku-5-5'].map(m=>`<option ${s.model===m?'selected':''}>${m}</option>`).join('')}</select></div></details>
- <div class="row"><button class="btn pri" id="aiSave">저장</button><button class="btn" id="aiTest">연결 테스트</button><button class="btn red" id="aiClear">키 지우기</button></div>
+ <div class="field"><label class="f" for="aiMode">고객 반응·피드백 엔진</label><select class="t" id="aiMode"><option value="mine" ${(s.aiMode==='mine'||(!s.aiPicked&&s.aiMode==='demo'))?'selected':''}>내 클로드 (권장 · 키 필요 없음)</option><option value="demo" ${(s.aiPicked&&s.aiMode==='demo')?'selected':''}>규칙 엔진 (AI 없이)</option>${AI_KEY_UI?`<option value="claude" ${s.aiMode==='claude'?'selected':''}>Claude API 키 (개발용)</option>`:''}</select></div>
+ <p class="sub" style="margin:0 0 8px">${SAMPLE?'내 클로드에 올린 앱이라 키 없이 AI를 써요.':'내 클로드에 올린 앱에서 열면 키 없이 AI를 써요.'}</p>${AI_KEY_UI?`<details><summary class="sub" style="cursor:pointer;margin-bottom:8px">개발용: API 키로 연결</summary><div class="field"><label class="f" for="aiKey">API 키 <span class="sub">${hasKey?'(이 탭에 들어 있어요)':''}</span></label><input class="t" id="aiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></div>
+ <div class="field"><label class="f" for="aiModel">모델</label><select class="t" id="aiModel">${['claude-sonnet-5-5','claude-opus-5-5','claude-haiku-5-5'].map(m=>`<option ${s.model===m?'selected':''}>${m}</option>`).join('')}</select></div></details>`:''}
+ <div class="row"><button class="btn pri" id="aiSave">저장</button><button class="btn" id="aiTest">연결 테스트</button>${AI_KEY_UI?'<button class="btn red" id="aiClear">키 지우기</button>':''}</div>
  <p class="sub" style="margin-top:10px">AI에는 고객 이름·번호를 가린 내용만 보내요.</p></div>
  <div class="card"><h2>관리</h2><p class="sub">다른 사람이 보낸 기록 합치기, 확인이 필요한 기록 보기, 전체 백업이 있어요.</p><div class="row" style="margin-top:8px"><button class="btn" data-goto="admin">관리 열기</button></div></div>
  <div class="card"><h2>음성</h2><p class="sub">음성 인식: ${sr?'<span class="chip ok">지원</span>':'<span class="chip no">미지원 (크롬 권장)</span>'} · 한국어 목소리 ${voices.length}개</p>
@@ -4091,9 +4094,9 @@ function settingsView(v){
  <h2 style="margin-top:14px">내 정보</h2><div class="field"><label class="f" for="myPhone">내 번호 (카톡 템플릿에 들어가요)</label><input class="t" id="myPhone" value="${esc(ME.phone||'')}" placeholder="010-0000-0000"></div>
  <div class="field"><label class="f" for="myCo">회사 (대사에 들어가요)</label><input class="t" id="myCo" value="${esc(ME.company||'')}" placeholder="예: 메타리치"></div>
  <div class="row"><button class="btn pri" id="meSave">저장</button></div></div></div>`;
- $('#aiSave',v).addEventListener('click',()=>{ s.aiMode=$('#aiMode').value; s.aiPicked=true; s.model=$('#aiModel').value; const k=$('#aiKey').value.trim(); if(k) ss('cai.key',k); save(); toast(s.aiMode==='claude'&&!ss('cai.key')?'키가 없어서 AI 없이 돌아가요':s.aiMode==='mine'&&!SAMPLE?'내 클로드에 올린 앱에서 열어야 AI를 써요':'저장했어요'); settingsView(v); });
- $('#aiClear',v).addEventListener('click',()=>{ ss('cai.key',null); toast('키를 지웠어요'); settingsView(v); });
- $('#aiTest',v).addEventListener('click',async()=>{ const k=$('#aiKey').value.trim(); if(k) ss('cai.key',k); s.model=$('#aiModel').value; try{ const t=await callClaude('한 단어로만 답해.',[{role:'user',content:'연결 확인. "성공"이라고만 답해.'}],10); toast('연결됨: '+t); }catch(e){ toast(e.message); } });
+ $('#aiSave',v).addEventListener('click',()=>{ s.aiMode=$('#aiMode').value; s.aiPicked=true; if($('#aiModel')) s.model=$('#aiModel').value; const k=$('#aiKey')?$('#aiKey').value.trim():''; if(k) ss('cai.key',k); if(!AI_KEY_UI&&s.aiMode==='claude') s.aiMode='mine'; save(); toast(s.aiMode==='claude'&&!ss('cai.key')?'키가 없어서 AI 없이 돌아가요':s.aiMode==='mine'&&!SAMPLE?'내 클로드에 올린 앱에서 열어야 AI를 써요':'저장했어요'); settingsView(v); });
+ if($('#aiClear',v)) $('#aiClear',v).addEventListener('click',()=>{ ss('cai.key',null); toast('키를 지웠어요'); settingsView(v); });
+ $('#aiTest',v).addEventListener('click',async()=>{ const k=$('#aiKey')?$('#aiKey').value.trim():''; if(k) ss('cai.key',k); if($('#aiModel')) s.model=$('#aiModel').value; try{ const t=await callClaude('한 단어로만 답해.',[{role:'user',content:'연결 확인. "성공"이라고만 답해.'}],10); toast('연결됨: '+t); }catch(e){ toast(e.message); } });
  $('#vTest',v).addEventListener('click',()=>{ s.voice=$('#vName').value; s.rate=+$('#vRate').value; speak('네 여보세요? 누구세요?'); });
  $('#vRate',v).addEventListener('input',e=>{ s.rate=+e.target.value; $('#vRateV',v).textContent=s.rate.toFixed(1)+'배'; save(); });
  $('#vRate',v).addEventListener('change',()=>speak('네 여보세요? 누구세요?'));
