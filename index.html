@@ -990,10 +990,10 @@ function bindLogin_v4(){
 /* ---------- 저장: 클로드 계정(db, 나만 보는 공간) + 이 기기 캐시 ---------- */
 const CLOUD={on:false,db:null,col:'',rev:0,timer:null,busy:false,state:'local',dev:(()=>{ try{ let d=localStorage.getItem('cai.dev'); if(!d){ d='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); localStorage.setItem('cai.dev',d);} return d; }catch(e){ return 'd'+Date.now().toString(36); } })()};
 const CHUNK=60000; // 한글 3바이트 기준으로도 문서 하나 256KiB 아래
-function cloudBadge(){ const b=document.getElementById('syncBadge'); if(!b) return; if(srvOn()){ srvBadge(); return; } const t={cloud:'동기화',saving:'저장 중',init:'연결 중',local:'이 기기만'}[CLOUD.state]||''; b.textContent=t; b.dataset.s=CLOUD.state; b.title=CLOUD.state==='local'?'내 클로드에 올린 내 앱에서 열면 모든 기기에서 같은 기록을 봐요':'내 클로드 계정에 저장돼요'; }
+function cloudBadge(){ const b=document.getElementById('syncBadge'); if(!b) return; if(srvOn()){ srvBadge(); return; } const t={cloud:'동기화',saving:'저장 중',init:'연결 중',local:'이 기기만',fail:'저장 실패'}[CLOUD.state]||''; b.textContent=t; b.dataset.s=CLOUD.state; b.title=CLOUD.state==='fail'?'내 클로드 계정에 저장하지 못했어요. 이 기기에는 남아 있고, 잠시 뒤 다시 시도해요':CLOUD.state==='local'?'내 클로드에 올린 내 앱에서 열면 모든 기기에서 같은 기록을 봐요':'내 클로드 계정에 저장돼요'; }
 async function cloudPull(){
  const snap=await CLOUD.db.collection(CLOUD.col).get(); const m={}; snap.docs.forEach(d=>{ m[d.id]=d.data(); });
- const meta=m.meta; if(!meta||!meta.n) return null; let s=''; CLOUD.n0=Math.max(meta.n,Object.keys(m).filter(k=>/^cd+$/.test(k)).length);
+ const meta=m.meta; if(!meta||!meta.n) return null; let s=''; CLOUD.n0=Math.max(meta.n,Object.keys(m).filter(k=>/^c[0-9]+$/.test(k)).length);
  for(let i=0;i<meta.n;i++){ const c=m['c'+i]; if(!c||c.rev!==meta.rev) return {broken:true}; s+=c.s; }
  try{ return {rev:meta.rev,data:JSON.parse(s)}; }catch(e){ return {broken:true}; }
 }
@@ -1007,11 +1007,14 @@ async function cloudPush(){
  // 예전에 더 많이 올렸던 조각(이름이 든 옛 사본일 수 있음)은 지워요
  for(let i=n;i<(CLOUD.n0||n);i++){ try{ await CLOUD.db.doc(CLOUD.col+'/c'+i).delete(); }catch(e){} } CLOUD.n0=n;
 }
-function mergeDB(a,b){ // a: 클로드에 있던 것, b: 이 기기 것 → id 기준 합치기 (같은 id는 a)
+function mergeDB(a,b){ // a: 클로드에 있던 것, b: 이 기기 것 → id 기준 합치기. 같은 id는 더 나중에 고친 쪽(_u), 같으면 a. 지운 기록(tomb)은 되살리지 않아요 (2026-11-23)
  const out=Object.assign({},b,a);
- for(const k of ['qlogs','calls','sessions','proposals','users']){ const map=new Map(); (a[k]||[]).forEach(x=>x&&x.id&&map.set(x.id,x)); (b[k]||[]).forEach(x=>{ if(x&&x.id&&!map.has(x.id)) map.set(x.id,x); }); out[k]=[...map.values()]; }
+ if((b.cfgAt||0)>(a.cfgAt||0)){ out.settings=b.settings; out.playbook=b.playbook; out.cfgAt=b.cfgAt; }
+ const tomb=Object.assign({},a.tomb||{}); for(const [id,t] of Object.entries(b.tomb||{})) if(!(tomb[id]>=t)) tomb[id]=t;
+ const old=Date.now()-180*864e5; for(const id of Object.keys(tomb)) if(tomb[id]<old) delete tomb[id]; out.tomb=tomb;
+ for(const k of ['qlogs','calls','sessions','proposals','users']){ const map=new Map(); (a[k]||[]).forEach(x=>x&&x.id&&map.set(x.id,x)); (b[k]||[]).forEach(x=>{ if(!x||!x.id) return; const o=map.get(x.id); if(!o||(x._u||0)>(o._u||0)) map.set(x.id,x); }); out[k]=[...map.values()].filter(x=>k==='users'||!(tomb[x.id]>=(x._u||0))); }
  const cu={}; for(const src of [b.customers||{},a.customers||{}]) for(const [uidk,obj] of Object.entries(src)) cu[uidk]=Object.assign({},cu[uidk]||{},obj);
- out.customers=cu; out.feedback=Object.assign({},b.feedback||{},a.feedback||{}); out.teamFeedback=[...new Map([...(b.teamFeedback||[]),...(a.teamFeedback||[])].map(x=>[x.key,x])).values()];
+ out.customers=cu; out.feedback={}; for(const src of [b.feedback||{},a.feedback||{}]) for(const [uk,obj] of Object.entries(src)) out.feedback[uk]=Object.assign({},out.feedback[uk]||{},obj); out.teamFeedback=[...new Map([...(b.teamFeedback||[]),...(a.teamFeedback||[])].map(x=>[x.key,x])).values()];
  if(typeof mergeMine==='function') mergeMine(out,a,b);
  out.monthly={}; for(const src of [b.monthly||{},a.monthly||{}]) for(const [uk,obj] of Object.entries(src)) out.monthly[uk]=Object.assign({},out.monthly[uk]||{},obj);
  const bu=new Map((b.users||[]).map(u=>[u.id,u])); out.users.forEach(u=>{ const o=bu.get(u.id); if(o&&o.terms&&(!u.terms||o.terms>u.terms)){ u.terms=o.terms; u.termsAt=o.termsAt; } });
@@ -1025,10 +1028,10 @@ async function cloudFlush(){
  if(!CLOUD.on) return; if(CLOUD.busy){ cloudSchedule(); return; } CLOUD.busy=true;
  try{
   const meta=await CLOUD.db.doc(CLOUD.col+'/meta').get();
-  if(meta.exists&&meta.data().rev!==CLOUD.rev){ const r=await cloudPull(); if(r&&!r.broken){ const n0=(DB.qlogs||[]).length; DB=mergeDB(mergeSeed(r.data),DB); relinkMe(); if((DB.qlogs||[]).length!==n0&&!LIVE) render(); } }
-  await cloudPush(); CLOUD.state='cloud';
+  if(meta.exists&&meta.data().rev!==CLOUD.rev){ let r=await cloudPull(); if(r&&r.broken){ await new Promise(ok=>setTimeout(ok,1500)); r=await cloudPull(); } /* 다른 기기가 올리는 중이면 조각이 안 맞아요. 한 번 기다렸다 다시 읽어요 */ if(r&&!r.broken){ const n0=(DB.qlogs||[]).length; DB=mergeDB(mergeSeed(r.data),DB); snapDB(); relinkMe(); if((DB.qlogs||[]).length!==n0&&!LIVE) render(); } }
+  await cloudPush(); CLOUD.state='cloud'; CLOUD.fails=0;
   await callsPush();
- }catch(e){ if(e&&e.code==='invalid_argument'){ CLOUD.on=false; CLOUD.state='local'; } else { CLOUD.state='cloud'; if(e&&e.code==='quota_exceeded') toast('저장 공간이 꽉 찼어요. 오래된 연습 기록을 지워 주세요.'); } }
+ }catch(e){ if(e&&e.code==='invalid_argument'){ CLOUD.on=false; CLOUD.state='local'; } else { CLOUD.state='fail'; CLOUD.fails=(CLOUD.fails||0)+1; if(e&&e.code==='quota_exceeded') toast('저장 공간이 꽉 찼어요. 오래된 연습 기록을 지워 주세요.'); else { clearTimeout(CLOUD.timer); CLOUD.timer=setTimeout(cloudFlush,Math.min(120000,8000*CLOUD.fails)); } } } // 실패하면 '저장 실패'로 보이고 잠시 뒤 다시 해요 (예전엔 '동기화'로 보였어요)
  CLOUD.busy=false; cloudBadge();
 }
 async function cloudInit(){
@@ -1040,14 +1043,14 @@ async function cloudInit(){
   const w=typeof user.can==='function'?await user.can('data.write'):null; if(w===false) throw 0;
   CLOUD.db=db; CLOUD.col='data/users/'+id;
   const r=await cloudPull();
-  if(r&&!r.broken){ DB=mergeDB(mergeSeed(r.data),DB); CLOUD.rev=r.rev; }
+  if(r&&!r.broken){ DB=mergeDB(mergeSeed(r.data),DB); snapDB(); CLOUD.rev=r.rev; }
   CLOUD.on=true; CLOUD.uid=id; await cloudPush(); CLOUD.state='cloud'; callsPush();
   try{ localStorage.setItem(LS_KEY,JSON.stringify(DB)); }catch(e){}
  }catch(e){ CLOUD.on=false; CLOUD.state='local'; }
  relinkMe(); if(!LIVE) render(); cloudBadge();
  document.addEventListener('visibilitychange',async()=>{
   if(document.visibilityState!=='visible'||!CLOUD.on||CLOUD.busy||LIVE) return;
-  try{ const m=await CLOUD.db.doc(CLOUD.col+'/meta').get(); if(m.exists&&m.data().rev!==CLOUD.rev){ const r=await cloudPull(); if(r&&!r.broken){ DB=mergeDB(mergeSeed(r.data),DB); CLOUD.rev=r.rev; relinkMe(); try{ localStorage.setItem(LS_KEY,JSON.stringify(DB)); }catch(e){} render(); } } }catch(e){}
+  try{ const m=await CLOUD.db.doc(CLOUD.col+'/meta').get(); if(m.exists&&m.data().rev!==CLOUD.rev){ const r=await cloudPull(); if(r&&!r.broken){ DB=mergeDB(mergeSeed(r.data),DB); snapDB(); CLOUD.rev=r.rev; relinkMe(); try{ localStorage.setItem(LS_KEY,JSON.stringify(DB)); }catch(e){} render(); } } }catch(e){}
  });
 }
 
@@ -1060,9 +1063,12 @@ function remindCard(){
 function bindRemind(v){ $$('[data-done]',v).forEach(b=>b.addEventListener('click',()=>{ const r=DB.qlogs.find(x=>x.id===b.dataset.done); if(r){ r.done=true; save(); render(); } })); }
 
 /* ---------- 이번 주 한 줄 피드백 ---------- */
-function weekKey(d){ const x=d?new Date(d):new Date(); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); return x.toISOString().slice(0,10); }
+function ymdLocal(x){ const p=n=>String(n).padStart(2,'0'); return `${x.getFullYear()}-${p(x.getMonth()+1)}-${p(x.getDate())}`; }
+function weekKey(d){ const m=typeof d==='string'&&d.match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})/); const x=m?new Date(+m[1],+m[2]-1,+m[3]):(d?new Date(d):new Date()); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); return ymdLocal(x); } // 그 주 월요일(기기 시간). 예전엔 UTC라 아침 9시 전후로 키가 달랐어요 (2026-11-23)
+/* 예전 판이 아침 9시 전에 저장한 피드백은 키가 하루 앞(일요일)이라 그것도 찾아봐요 */
+function weekFb(map,wk){ if(!map) return {}; if(map[wk]) return map[wk]; const m=wk.match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})/); const x=new Date(+m[1],+m[2]-1,+m[3]-1); return map[ymdLocal(x)]||{}; }
 function feedbackCard(){
- DB.feedback=DB.feedback||{}; const wk=weekKey(); const f=(DB.feedback[ME.id]||{})[wk]||{};
+ DB.feedback=DB.feedback||{}; const wk=weekKey(); const f=weekFb(DB.feedback[ME.id],wk);
  const fld=(k,l,ph)=>`<div class="field"><label class="f" for="fb_${k}">${l}</label><input class="t" id="fb_${k}" value="${esc(f[k]||'')}" placeholder="${esc(ph)}"></div>`;
  return `<div class="card"><h2>이번 주 한 줄 피드백</h2><p class="sub">기록 보낼 때 같이 들어가요.</p>${fld('pain','불편했던 것','예: 질문 바꾸는 버튼이 작음')}${fld('win','먹힌 말','예: "들으셔야 하는 부분만 말씀드리고 끝낼게요"')}${fld('change','바꾸고 싶은 말','예: Q3 숫자가 길어서 끊김')}<div class="row end"><button class="btn sm" id="fbSave">저장</button></div></div>`;
 }
@@ -1775,7 +1781,7 @@ ${KM.tr?'[녹취(이름·번호 가림)]\n'+maskText(KM.tr,names).slice(0,5000):
 const KT_SUBS=[['make','맞춤 만들기'],['sits','상황별 카톡'],['hooks','후킹 문장'],['ex','장표 예시'],['rules','원칙'],['ev','근거 숫자']];
 function kakaoView(v){
  v.innerHTML=`<h1>카톡·장표</h1><p class="lead">통화한 고객에게 보낼 카톡과 장표 이미지를 만들어요. 장표에는 고객 이름이 들어가지 않고, 오른쪽 아래에 내 이름·회사만 들어가요.</p>
- <div class="tabs2" role="tablist">${KT_SUBS.map(([id,n])=>`<button data-kt="${id}" aria-pressed="${KTAB===id}">${n}</button>`).join('')}</div><div id="ktBody"></div>`;
+ <div class="tabs2" role="tablist">${KT_SUBS.map(([id,n])=>`<button role="tab" data-kt="${id}" aria-selected="${KTAB===id}" aria-pressed="${KTAB===id}">${n}</button>`).join('')}</div><div id="ktBody"></div>`;
  $$('[data-kt]',v).forEach(b=>b.addEventListener('click',()=>{ KTAB=b.dataset.kt; kakaoView(v); }));
  ({make:kmView,sits:ktSitsView,hooks:ktHooksView,ex:ktExView,rules:ktRulesView,ev:ktEvView}[KTAB]||kmView)($('#ktBody',v));
 }
@@ -3409,8 +3415,21 @@ function load(){
  try{const raw=localStorage.getItem(LS_KEY); if(raw){const d=JSON.parse(raw); if(d&&d.version===1) return mergeSeed(d);}}catch(e){}
  return buildSeed();
 }
-function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(DB));}catch(e){ if(!CLOUD.on) toast('이 브라우저에선 저장이 막혀 있어요. 창을 닫으면 사라져요.'); } if(CLOUD.on) cloudSchedule(); srvQueue(); }
-function resetDB(){ DB=buildSeed(); save(); }
+/* 기록마다 '마지막으로 고친 때'(_u)와 지운 기록 표시(DB.tomb)를 save()에서 자동으로 붙여요. 두 기기를 같이 써도 고친 것·지운 것이 되돌아가지 않게 하려고요. (2026-11-23, 단장님 피드백 1번) */
+const STAMP_KEYS=['qlogs','calls','sessions','proposals','users'];
+let SNAP=null, SNAP_DB=null, SNAP_CFG='';
+function snapHash(x){ const u=x._u; delete x._u; const s=JSON.stringify(x); if(u!==undefined) x._u=u; return s; }
+function snapCfg(){ try{ return JSON.stringify([DB.settings,DB.playbook]); }catch(e){ return ''; } }
+function snapDB(){ SNAP=new Map(); SNAP_DB=DB; if(!DB) return; for(const k of STAMP_KEYS) (DB[k]||[]).forEach(x=>{ if(x&&x.id) SNAP.set(x.id,snapHash(x)); }); SNAP_CFG=snapCfg(); }
+function stampDB(){
+ if(!DB) return; if(SNAP_DB!==DB||!SNAP){ snapDB(); return; }
+ const now=Date.now(), seen=new Set();
+ for(const k of STAMP_KEYS) (DB[k]||[]).forEach(x=>{ if(!x||!x.id) return; seen.add(x.id); const h=snapHash(x); if(SNAP.get(x.id)!==h){ x._u=now; SNAP.set(x.id,h); } });
+ for(const id of [...SNAP.keys()]) if(!seen.has(id)){ (DB.tomb=DB.tomb||{})[id]=now; SNAP.delete(id); }
+ const c=snapCfg(); if(c!==SNAP_CFG){ DB.cfgAt=now; SNAP_CFG=c; }
+}
+function save(){ try{ stampDB(); }catch(e){} try{localStorage.setItem(LS_KEY,JSON.stringify(DB));}catch(e){ if(!CLOUD.on) toast('이 브라우저에선 저장이 막혀 있어요. 창을 닫으면 사라져요.'); } if(CLOUD.on) cloudSchedule(); srvQueue(); }
+function resetDB(){ const ids=[]; if(DB) for(const k of ['qlogs','calls','sessions','proposals']) (DB[k]||[]).forEach(x=>{ if(x&&x.id) ids.push(x.id); }); const tomb=Object.assign({},(DB&&DB.tomb)||{}); DB=buildSeed(); const keep=new Set(); for(const k of ['qlogs','calls','sessions','proposals']) (DB[k]||[]).forEach(x=>{ if(x&&x.id) keep.add(x.id); }); const now=Date.now(); ids.forEach(id=>{ if(!keep.has(id)) tomb[id]=now; }); DB.tomb=tomb; save(); } // 지운 기록은 다른 기기에서 되살아나지 않게 표시를 남겨요
 function ss(k,v){ try{ if(v===undefined) return sessionStorage.getItem(k); if(v===null) sessionStorage.removeItem(k); else sessionStorage.setItem(k,v);}catch(e){ if(v===undefined) return MEM[k]||null; MEM[k]=v; } }
 
 /* ================= 유틸 ================= */
@@ -3418,7 +3437,7 @@ const $=(s,el=document)=>el.querySelector(s);
 const $$=(s,el=document)=>[...el.querySelectorAll(s)];
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>nowLocal().slice(0,10); // 기기 시간 기준 (예전엔 UTC라 아침 9시 전엔 전날이 나왔어요. 2026-11-23)
 const fmt=d=>{ if(!d) return ''; const s=String(d); return s.slice(0,10).replace(/-/g,'.')+(s.length>10?' '+s.slice(11,16):''); };
 const lvName=id=>(LEVELS.find(l=>l.id===id)||{}).name||id;
 const persona=id=>DB.personas.find(p=>p.id===id);
@@ -3455,6 +3474,8 @@ function maskText(text,names){
  let t=String(text||'');
  t=t.replace(/01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}/g,'010-****-****');
  t=t.replace(/\b\d{6}[-\s]?[1-4]\d{6}\b/g,'******-*******');
+ t=t.replace(/\b\d{4}[-\s.]\d{4}[-\s.]\d{4}[-\s.]\d{4}\b/g,'****-****-****-****'); // 카드 번호 (2026-11-23)
+ t=t.replace(/\b0\d{1,2}[-\s.]\d{3,4}[-\s.]\d{4}\b/g,'0**-****-****'); // 유선 전화
  for(const n of (names||[]).filter(Boolean)){ const nn=n.trim(); if(nn.length>=2) t=t.split(nn).join('고객'); }
  return t;
 }
@@ -3981,7 +4002,10 @@ function adminView(v){
   save(); toast('AI 고객을 추가했어요'); adminView(v); });
  $('#nuAdd').addEventListener('click',()=>{ const name=$('#nuName').value.trim(), pin=$('#nuPin').value.trim(); if(!name){ toast('이름을 넣어 주세요'); return; } DB.users.push({id:uid('u'),name,role:$('#nuRole').value,team:ME.team,pin,phone:''}); save(); toast('사용자를 추가했어요'); adminView(v); });
  $('#exp').addEventListener('click',()=>download('call-allinone-'+today()+'.json',JSON.stringify(DB,null,1)));
- $('#impFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const d=JSON.parse(r.result); if(d.version!==1) throw new Error('버전이 달라요'); DB=d; save(); toast('가져왔어요'); render(); }catch(err){ toast('가져오기 실패: '+err.message); } }; r.readAsText(f); });
+ $('#impFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); e.target.value=''; r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d||d.version!==1) throw new Error('버전이 달라요'); if(!Array.isArray(d.users)||!d.users.length||!d.playbook) throw new Error('콜 올인원 백업 파일이 아니에요');
+   const n=x=>(x&&Array.isArray(x.qlogs)?x.qlogs.length:0), m=x=>(x&&Array.isArray(x.sessions)?x.sessions.length:0);
+   askYes(`지금 기록(통화 ${n(DB)}건 · 연습 ${m(DB)}건)을 이 파일(통화 ${n(d)}건 · 연습 ${m(d)}건)로 통째로 바꿀까요? 바꾸기 전에 지금 기록을 파일로 먼저 저장해요.`,()=>{ try{ download('call-allinone-바꾸기전-'+today()+'.json',JSON.stringify(DB,null,1)); }catch(e){} DB=mergeSeed(d); snapDB(); save(); relinkMe(); toast('가져왔어요'); render(); },'바꾸기');
+  }catch(err){ toast('가져오기 실패: '+err.message); } }; r.readAsText(f); });
  $('#rst').addEventListener('click',()=>askYes('모든 기록을 지우고 데모 상태로 돌릴까요?',()=>{ resetDB(); ME=userById(ME.id)||DB.users[0]; render(); toast('처음 상태로 돌렸어요'); },'지우기'));
 }
 function admUserDetail(){
@@ -4055,7 +4079,7 @@ if('speechSynthesis' in window){ try{ speechSynthesis.onvoiceschanged=()=>{ if(V
 /* ================= 시작 ================= */
 /* 기기가 어두운 화면 설정이어도 밝은 화면으로 보여요 (2026-11-19 디자인: 흰 바탕 · 하늘색). 어두운 화면용 색은 CSS에 남아 있어요. Claude 화면이 data-theme을 어둡게 바꿔도 안 따라가게 이름을 따로 써요(2026-11-23). */
 document.documentElement.dataset.caitheme='light';
-DB=load();
+DB=load(); snapDB();
 (function(){ const id=lsMe()||ss('cai.me')||DB.meId; if(id){ const u=userById(id); if(u&&!isEx(u)) ME=u; } })();
 render();
 cloudInit();
